@@ -149,16 +149,17 @@ io.on('connection', (socket) => {
         if (result) {
           // Check if this was a pawn promotion
           if (result.flags && result.flags.includes('p')) {
-            // Pawn promotion detected - don't send position yet
+            // Pawn promotion detected - revert the tentative move and prompt the mover only
+            games[gameId].game.undo()
             games[gameId].pendingPromotion = {
               square: result.to,
               color: result.color,
-              move: move,
-              from: result.from
+              from: result.from,
+              playerSocketId: socket.id
             }
-            
-            // Send promotion required event
-            io.to(gameId).emit('promotionRequired', {
+
+            // Send promotion required event to the player who moved
+            socket.emit('promotionRequired', {
               square: result.to,
               color: result.color,
               availablePieces: ['q', 'r', 'b', 'n'],
@@ -198,9 +199,14 @@ io.on('connection', (socket) => {
     
     if(games[gameId].status === 'ready' && games[gameId].pendingPromotion) {
       try {
-        // Complete the promotion move
-        let promotionMove = games[gameId].pendingPromotion.move + piece
-        let result = games[gameId].game.move(promotionMove)
+        const pending = games[gameId].pendingPromotion
+        // Only allow the player who made the move to choose the promotion
+        if (pending.playerSocketId && pending.playerSocketId !== socket.id) {
+          socket.emit('invalidPromotion', { error: 'Not your promotion' })
+          return
+        }
+        // Complete the promotion move using object form
+        let result = games[gameId].game.move({ from: pending.from, to: pending.square, promotion: piece })
         
         if (result) {
           // Clear pending promotion

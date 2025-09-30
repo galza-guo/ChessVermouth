@@ -238,10 +238,12 @@ function App() {
           if (result) {
             // Check for pawn promotion
             if (result.flags && result.flags.includes('p')) {
+              // Undo and prompt for promotion choice
+              hotSeatGame.undo()
               setPromotionRequired(true)
               setPromotionData({
                 square: result.to,
-                color: result.color === 'w' ? 'white' : 'black',
+                color: result.color, // 'w' or 'b'
                 move: move,
                 from: result.from
               })
@@ -339,7 +341,8 @@ function App() {
 
   //click
   const handleSquareClick = (e) => {
-    let square = e.target.getAttribute('square')
+    // Click is bound to the square container; use currentTarget and data-square
+    let square = e.currentTarget.getAttribute('data-square')
 
     if (selectedSquare !== square) {
       if (availableMoves.includes(square)) {
@@ -355,7 +358,8 @@ function App() {
   }
   //drag and drop
   const handleDragStart = async (e) => {
-    dragged = e.target.getAttribute('square')
+    // Drag starts on the piece image; it carries data-square
+    dragged = e.target.getAttribute('data-square')
 
     let square = dragged
     if (selectedSquare !== square) {
@@ -364,7 +368,8 @@ function App() {
     }
   }
   const handleDrop = (e) => {
-    let square = e.target.getAttribute('square')
+    // Drop is handled on the square container
+    let square = e.currentTarget.getAttribute('data-square')
 
     if (availableMoves.includes(square)) {
       movePiece(`${selectedSquare}${square}`)
@@ -372,8 +377,13 @@ function App() {
   }
 
   const handlePromotionCancel = () => {
-    setPromotionRequired(false)
-    setPromotionData(null)
+    if (isHotSeatMode && promotionData) {
+      // Default to queen on cancel in hot seat
+      handlePromote('q')
+    } else if (!isHotSeatMode && socket) {
+      // Default to queen on cancel in network mode to avoid blocking the game
+      socket.emit('promote', { gameId: gameId, piece: 'q' })
+    }
   }
 
   return (
