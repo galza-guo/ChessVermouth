@@ -320,6 +320,12 @@ async function startServer() {
         const output = data.toString();
         if (output.includes('Server is online')) {
           log(`✅ Server started successfully on port ${portConfig.serverPort}!`, 'green');
+          // Extract LAN IP from server output
+          const lanIpMatch = output.match(/LAN IP for multiplayer: ([0-9.]+:[0-9]+)/);
+          if (lanIpMatch) {
+            log(`🌐 Server LAN address: ${lanIpMatch[1]}`, 'blue');
+            log(`📱 Other players should connect to: http://${lanIpMatch[1].split(':')[0]}:${portConfig.clientPort}?server=${lanIpMatch[1].split(':')[0]}`, 'cyan');
+          }
           notify('ChessVermouth', `Server is ready on port ${portConfig.serverPort}`);
           resolve();
         }
@@ -377,6 +383,7 @@ async function startClient() {
         const output = data.toString();
         if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
           log(`✅ Client started successfully on port ${portConfig.clientPort}!`, 'green');
+          log(`🌐 Client URL: http://localhost:${portConfig.clientPort}`, 'blue');
           
           // Open browser
           setTimeout(() => {

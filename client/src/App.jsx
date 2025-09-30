@@ -12,6 +12,7 @@ const sounds = { move, check, capture, castle, gameOver }
 // Detect hot seat mode from URL parameter
 const urlParams = new URLSearchParams(window.location.search);
 const isHotSeatMode = urlParams.get('mode') === 'hotseat';
+const serverIp = urlParams.get('server') || import.meta.env.VITE_SERVER_IP || 'localhost';
 
 function App() {
   const tableEnd = useRef(null)
@@ -80,7 +81,7 @@ function App() {
       // Network mode: existing logic
       if (turn === color[0]) {
         const serverPort = import.meta.env.VITE_SERVER_PORT || '3001'
-      let result = await fetch(`http://localhost:${serverPort}/moves?square=${square}&gameId=${gameId}`)
+      let result = await fetch(`http://${serverIp}:${serverPort}/moves?square=${square}&gameId=${gameId}`)
         let data = await result.json()
         let moves = data.moves.map(move => move.to)
         setAvailableMoves(moves)
@@ -108,7 +109,7 @@ function App() {
       const io = await import('socket.io-client')
       // Use dynamic server port from environment variable or default
       const serverPort = import.meta.env.VITE_SERVER_PORT || '3001'
-      const newSocket = io.connect(`http://localhost:${serverPort}`)
+      const newSocket = io.connect(`http://${serverIp}:${serverPort}`)
       setSocket(newSocket)
 
       const handlePosition = (data) => {
@@ -560,11 +561,16 @@ function controlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
 }
 
 function gameJoinPanel({ socket, status, color, gameId }) {
+  const serverIp = new URLSearchParams(window.location.search).get('server') || 'localhost';
 
   return (
     <div className='h-[500px] gap-3 w-96 bg-zinc-700 bg-opacity-90 rounded-xl p-3 flex flex-col'>
       <div>
         <p className='text-center text-white text-2xl font-bold'>Game Lobby</p>
+      </div>
+      <div className='text-xs text-gray-300 mb-2'>
+        <p>🔌 Connected to server: {serverIp}</p>
+        <p className='text-yellow-400'>💡 For LAN multiplayer: Both players must use the same server IP</p>
       </div>
       <div className='flex gap-2 text-sm'>
         <input required id="roomInput" className='grow py-1 px-2 rounded-lg' type='text' placeholder='Join or create a room by entering a code' />

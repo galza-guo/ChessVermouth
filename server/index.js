@@ -6,6 +6,7 @@ const cors = require('cors')
 app.use(cors())
 
 const { Chess } = require('chess.js')
+const os = require('os')
 
 // Use dynamic port from environment variable or default to 3001
 const PORT = process.env.PORT || 3001
@@ -14,12 +15,28 @@ const CLIENT_PORT = process.env.CLIENT_PORT || 5173
 
 let x = 233
 
+// Get LAN IP address for network multiplayer
+function getLanIp() {
+  const interfaces = os.networkInterfaces()
+  for (const name of Object.keys(interfaces)) {
+    for (const interface of interfaces[name]) {
+      if (interface.family === 'IPv4' && !interface.internal && interface.address.startsWith('192.168.')) {
+        return interface.address
+      }
+    }
+  }
+  return 'localhost' // fallback
+}
+
+const LAN_IP = getLanIp()
+
 const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
-    origin: `http://localhost:${CLIENT_PORT}`,
-    methods: ["GET", "POST"]
+    origin: [`http://localhost:${CLIENT_PORT}`, `http://${LAN_IP}:${CLIENT_PORT}`, `http://*:${CLIENT_PORT}`],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 })
 
@@ -270,6 +287,17 @@ app.get('/moves', (req, res) => {
   }
 })
 
-server.listen(PORT, ()=>{
+// Endpoint to get server network info for LAN multiplayer
+app.get('/server-info', (req, res) => {
+  res.send({
+    lanIp: LAN_IP,
+    port: PORT,
+    serverUrl: `http://${LAN_IP}:${PORT}`
+  })
+})
+
+server.listen(PORT, '0.0.0.0', ()=>{
   console.log(`Server is online on port ${PORT}`)
+  console.log(`Server accessible on all network interfaces`)
+  console.log(`LAN IP for multiplayer: ${LAN_IP}:${PORT}`)
 })
