@@ -302,11 +302,34 @@ async function startServer() {
       const npmCmd = await findNpmCommand();
       log(`🚀 Starting chess server on port ${portConfig.serverPort} using ${npmCmd}...`, 'yellow');
       
+      // Get local network info for display
+      const os = require('os');
+      const interfaces = os.networkInterfaces();
+      let lanIp = 'localhost';
+      for (const name of Object.keys(interfaces)) {
+        for (const interface of interfaces[name]) {
+          if (interface.family === 'IPv4' && !interface.internal && interface.address.startsWith('192.168.')) {
+            lanIp = interface.address;
+            break;
+          }
+        }
+        if (lanIp !== 'localhost') break;
+      }
+      
+      if (lanIp !== 'localhost') {
+        log(`🌐 Detected LAN IP: ${lanIp}`, 'blue');
+        log(`📱 For LAN multiplayer, other devices connect to: http://${lanIp}:${portConfig.clientPort}?server=${lanIp}`, 'cyan');
+      }
+      
       // Pass the dynamic port to the server via environment variable
       const spawnOptions = {
         cwd: path.join(__dirname, 'server'),
         stdio: 'pipe',
-        env: { ...process.env, PORT: portConfig.serverPort.toString() }
+        env: { 
+          ...process.env, 
+          PORT: portConfig.serverPort.toString(),
+          LAN_IP: lanIp
+        }
       };
       
       // Use shell on Windows for better npm command handling
@@ -318,6 +341,8 @@ async function startServer() {
       
       serverProcess.stdout.on('data', (data) => {
         const output = data.toString();
+        log(`Server: ${output.trim()}`, 'blue'); // Show all server output
+        
         if (output.includes('Server is online')) {
           log(`✅ Server started successfully on port ${portConfig.serverPort}!`, 'green');
           // Extract LAN IP from server output
@@ -325,8 +350,57 @@ async function startServer() {
           if (lanIpMatch) {
             log(`🌐 Server LAN address: ${lanIpMatch[1]}`, 'blue');
             log(`📱 Other players should connect to: http://${lanIpMatch[1].split(':')[0]}:${portConfig.clientPort}?server=${lanIpMatch[1].split(':')[0]}`, 'cyan');
+          } else {
+            // Try to extract any IP address from the output
+            const anyIpMatch = output.match(/(\d+\.\d+\.\d+\.\d+):(\d+)/);
+            if (anyIpMatch && anyIpMatch[1] !== '127.0.0.1' && anyIpMatch[1] !== 'localhost') {
+              log(`🌐 Detected server IP: ${anyIpMatch[1]}:${anyIpMatch[2]}`, 'blue');
+              log(`📱 Other players should connect to: http://${anyIpMatch[1]}:${portConfig.clientPort}?server=${anyIpMatch[1]}`, 'cyan');
+            }
           }
           notify('ChessVermouth', `Server is ready on port ${portConfig.serverPort}`);
+          
+          // Test network accessibility
+          setTimeout(() => {
+            const http = require('http');
+            const options = {
+              hostname: 'localhost',
+              port: portConfig.serverPort,
+              path: '/server-info',
+              method: 'GET',
+              timeout: 3000
+            };
+            
+            const req = http.request(options, (res) => {
+              let data = '';
+              res.on('data', (chunk) => {
+                data += chunk;
+              });
+              res.on('end', () => {
+                try {
+                  const serverInfo = JSON.parse(data);
+                  log(`✅ Server network info: LAN IP ${serverInfo.lanIp}:${serverInfo.port}`, 'green');
+                  if (serverInfo.lanIp && serverInfo.lanIp !== 'localhost') {
+                    log(`🌐 For LAN multiplayer: http://${serverInfo.lanIp}:${portConfig.clientPort}?server=${serverInfo.lanIp}`, 'cyan');
+                  }
+                } catch (e) {
+                  log('ℹ️  Server started but network info unavailable', 'yellow');
+                }
+              });
+            });
+            
+            req.on('error', (e) => {
+              log('⚠️  Could not verify server network status', 'yellow');
+            });
+            
+            req.on('timeout', () => {
+              req.destroy();
+              log('⚠️  Server network check timed out', 'yellow');
+            });
+            
+            req.end();
+          }, 1000);
+          
           resolve();
         }
       });

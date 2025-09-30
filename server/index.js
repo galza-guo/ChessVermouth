@@ -28,7 +28,7 @@ function getLanIp() {
   return 'localhost' // fallback
 }
 
-const LAN_IP = getLanIp()
+const LAN_IP = process.env.LAN_IP || getLanIp()
 
 const server = http.createServer(app)
 
