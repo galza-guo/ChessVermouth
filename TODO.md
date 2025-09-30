@@ -8,7 +8,7 @@
 | High | Completed | 🚀 One-Click Launch | Interactive menu system - user selects "1" to play instantly | User Experience |
 | Low | Pending | 🎯 App Bundle Creation | Create double-clickable ChessVermouth.app for macOS Finder integration | User Experience |
 | High | Completed | 🚀 Remove Command Line Dependency | No raw CLI commands needed - guided menu interface | User Experience |
-| High | Pending | ♟️ Pawn Promotion | Implement pawn promotion when pawns reach 8th rank - CORE GAME RULE | Game Logic |
+| High | Completed | ♟️ Pawn Promotion | Complete pawn promotion system with dialog UI - backend detection + frontend selection | Game Logic |
 
 ## Medium Priority Objectives
 
@@ -108,6 +108,11 @@ This enhancement transforms ChessVermouth from a developer-friendly setup to a c
 
 ## Missing Core Features
 
+| Priority | Status | Issue | Description | Category |
+|----------|--------|-------|-------------|----------|
+| High | Pending | 🎮 Hot Seat Mode | Local multiplayer - two players on same device | Game Modes |
+| Low | Pending | 🤖 Play Against Bot | AI opponent with difficulty levels | Game Modes |
+
 ## Technical Limitations to Address
 
 | Priority | Status | Issue | Description | Category |
@@ -148,4 +153,4 @@ This enhancement transforms ChessVermouth from a developer-friendly setup to a c
 
 ---
 
-**Next Steps**: Focus on the high-priority one-click setup and launch objectives first, as these are critical for making the application accessible to everyday users who are intimidated by command-line interfaces.
+**Next Steps**: Implement Hot Seat Mode (high priority) to enable local multiplayer on the same device, then work on Play Against Bot feature (low priority) for single-player gameplay.

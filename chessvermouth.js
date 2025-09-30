@@ -126,19 +126,34 @@ async function checkPort(port) {
   });
 }
 
+async function findAvailablePort(startPort, maxAttempts = 10) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = startPort + i;
+    if (await checkPort(port)) {
+      return port;
+    }
+  }
+  return null;
+}
+
 async function checkDependencies() {
   log('🔍 Checking system dependencies...', 'yellow');
   
   const nodeVersion = await checkNodeJS();
   const npmVersion = await checkNPM();
-  const serverPortAvailable = await checkPort(3001);
-  const clientPortAvailable = await checkPort(5173);
+  
+  // Find available ports dynamically
+  log('🔍 Finding available ports...', 'blue');
+  const serverPort = await findAvailablePort(3001);
+  const clientPort = await findAvailablePort(5173);
   
   const results = {
     node: nodeVersion,
     npm: npmVersion,
-    serverPort: serverPortAvailable,
-    clientPort: clientPortAvailable
+    serverPort: serverPort,
+    clientPort: clientPort,
+    serverPortAvailable: serverPort !== null,
+    clientPortAvailable: clientPort !== null
   };
   
   if (nodeVersion) {
@@ -153,16 +168,16 @@ async function checkDependencies() {
     log('❌ npm: Not installed', 'red');
   }
   
-  if (serverPortAvailable) {
-    log('✅ Server port 3001: Available', 'green');
+  if (serverPort) {
+    log(`✅ Server port: ${serverPort} (available)`, 'green');
   } else {
-    log('⚠️  Server port 3001: In use', 'yellow');
+    log('❌ No available server ports found (3001-3010)', 'red');
   }
   
-  if (clientPortAvailable) {
-    log('✅ Client port 5173: Available', 'green');
+  if (clientPort) {
+    log(`✅ Client port: ${clientPort} (available)`, 'green');
   } else {
-    log('⚠️  Client port 5173: In use', 'yellow');
+    log('❌ No available client ports found (5173-5182)', 'red');
   }
   
   log('', 'reset');
@@ -232,20 +247,28 @@ async function installDependencies() {
 let serverProcess = null;
 let clientProcess = null;
 
+// Dynamic port configuration
+let portConfig = {
+  serverPort: 3001,
+  clientPort: 5173
+};
+
 function startServer() {
   return new Promise((resolve, reject) => {
-    log('🚀 Starting chess server...', 'yellow');
+    log(`🚀 Starting chess server on port ${portConfig.serverPort}...`, 'yellow');
     
+    // Pass the dynamic port to the server via environment variable
     serverProcess = spawn('npm', ['run', 'start'], {
       cwd: path.join(__dirname, 'server'),
-      stdio: 'pipe'
+      stdio: 'pipe',
+      env: { ...process.env, PORT: portConfig.serverPort.toString() }
     });
     
     serverProcess.stdout.on('data', (data) => {
       const output = data.toString();
       if (output.includes('Server is online')) {
-        log('✅ Server started successfully!', 'green');
-        notify('ChessVermouth', 'Server is ready');
+        log(`✅ Server started successfully on port ${portConfig.serverPort}!`, 'green');
+        notify('ChessVermouth', `Server is ready on port ${portConfig.serverPort}`);
         resolve();
       }
     });
@@ -268,22 +291,28 @@ function startServer() {
 
 function startClient() {
   return new Promise((resolve, reject) => {
-    log('🚀 Starting chess client...', 'yellow');
+    log(`🚀 Starting chess client on port ${portConfig.clientPort}...`, 'yellow');
     
+    // Pass the dynamic port to the client via environment variable
     clientProcess = spawn('npm', ['run', 'dev'], {
       cwd: path.join(__dirname, 'client'),
-      stdio: 'pipe'
+      stdio: 'pipe',
+      env: { 
+        ...process.env, 
+        VITE_PORT: portConfig.clientPort.toString(),
+        VITE_SERVER_PORT: portConfig.serverPort.toString()
+      }
     });
     
     clientProcess.stdout.on('data', (data) => {
       const output = data.toString();
-      if (output.includes('ready in') || output.includes('5173')) {
-        log('✅ Client started successfully!', 'green');
+      if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
+        log(`✅ Client started successfully on port ${portConfig.clientPort}!`, 'green');
         
         // Open browser
         setTimeout(() => {
-          exec(`${config.browserCommand} http://localhost:5173`);
-          notify('ChessVermouth', 'Game opened in browser!');
+          exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}`);
+          notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
         }, 2000);
         
         resolve();
@@ -311,11 +340,57 @@ async function startFullGame() {
     await startServer();
     await startClient();
     log('🎉 Chess game is ready! Enjoy playing!', 'green');
-    log('📍 Game URL: http://localhost:5173', 'blue');
+    log(`📍 Game URL: http://localhost:${portConfig.clientPort}`, 'blue');
   } catch (error) {
     log(`❌ Failed to start game: ${error.message}`, 'red');
     notify('ChessVermouth', 'Failed to start game');
   }
+}
+
+async function startHotSeatMode() {
+  return new Promise((resolve, reject) => {
+    log(`🎮 Starting Hot Seat Mode on port ${portConfig.clientPort}...`, 'yellow');
+    notify('ChessVermouth', 'Starting Hot Seat Mode');
+    
+    clientProcess = spawn('npm', ['run', 'dev'], {
+      cwd: path.join(__dirname, 'client'),
+      stdio: 'pipe',
+      env: { 
+        ...process.env, 
+        VITE_PORT: portConfig.clientPort.toString(),
+        VITE_SERVER_PORT: portConfig.serverPort.toString()
+      }
+    });
+    
+    clientProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
+        log(`✅ Hot Seat Mode ready on port ${portConfig.clientPort}!`, 'green');
+        
+        // Open browser with hot seat parameter
+        setTimeout(() => {
+          exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}?mode=hotseat`);
+          notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
+        }, 2000);
+        
+        resolve();
+      }
+    });
+    
+    clientProcess.stderr.on('data', (data) => {
+      log(`Client error: ${data}`, 'red');
+    });
+    
+    clientProcess.on('error', (error) => {
+      reject(error);
+    });
+    
+    clientProcess.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Client exited with code ${code}`));
+      }
+    });
+  });
 }
 
 // Menu system
@@ -333,33 +408,37 @@ function askQuestion(question) {
 async function showMenu() {
   showBanner();
   
-  console.log('1️⃣  Play Chess Now (Server + Client)');
-  console.log('2️⃣  Start Server Only');
-  console.log('3️⃣  Launch Game Only');
-  console.log('4️⃣  Check System Status');
-  console.log('5️⃣  Install Dependencies');
-  console.log('6️⃣  Exit');
+  console.log('1️⃣  Play Chess Now (Network Multiplayer)');
+  console.log('2️⃣  Hot Seat Mode (Local Two Players)');
+  console.log('3️⃣  Start Server Only');
+  console.log('4️⃣  Launch Game Only');
+  console.log('5️⃣  Check System Status');
+  console.log('6️⃣  Install Dependencies');
+  console.log('7️⃣  Exit');
   console.log('');
   
-  const choice = await askQuestion('Choose an option (1-6): ');
+  const choice = await askQuestion('Choose an option (1-7): ');
   
   switch (choice) {
     case '1':
       await startFullGame();
       break;
     case '2':
-      await startServer();
+      await startHotSeatMode();
       break;
     case '3':
-      await startClient();
+      await startServer();
       break;
     case '4':
-      await checkDependencies();
+      await startClient();
       break;
     case '5':
-      await installDependencies();
+      await checkDependencies();
       break;
     case '6':
+      await installDependencies();
+      break;
+    case '7':
       log('👋 Goodbye! Thanks for using ChessVermouth.', 'cyan');
       process.exit(0);
       break;
@@ -404,6 +483,10 @@ async function main() {
     
     // Check dependencies first
     const deps = await checkDependencies();
+    
+    // Store dynamic ports
+    portConfig.serverPort = deps.serverPort || 3001;
+    portConfig.clientPort = deps.clientPort || 5173;
     
     if (!deps.node || !deps.npm) {
       log('⚠️  Node.js or npm not found', 'yellow');

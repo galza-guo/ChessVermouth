@@ -76,3 +76,106 @@ button:active {
 .grabbable:active {
   cursor: grabbing;
 }
+
+/* Promotion Dialog Styles */
+.promotion-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.promotion-dialog {
+  background: #2a2a2a;
+  border: 2px solid #444;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  min-width: 400px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.promotion-header {
+  margin-bottom: 20px;
+}
+
+.promotion-header h3 {
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.promotion-header p {
+  color: #ccc;
+  font-size: 1rem;
+}
+
+.promotion-options {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.promotion-piece {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px;
+  background: #333;
+  border: 2px solid #555;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+}
+
+.promotion-piece:hover {
+  background: #444;
+  border-color: #777;
+  transform: translateY(-2px);
+}
+
+.promotion-piece:active {
+  transform: translateY(0);
+}
+
+.piece-icon {
+  width: 60px;
+  height: 60px;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.piece-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #ddd;
+}
+
+.promotion-footer {
+  margin-top: 15px;
+}
+
+.cancel-button {
+  background: #666;
+  border: 1px solid #888;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-button:hover {
+  background: #777;
+  border-color: #999;
+}

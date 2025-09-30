@@ -7,13 +7,18 @@ app.use(cors())
 
 const { Chess } = require('chess.js')
 
+// Use dynamic port from environment variable or default to 3001
+const PORT = process.env.PORT || 3001
+// Use dynamic client port from environment variable or default to 5173
+const CLIENT_PORT = process.env.CLIENT_PORT || 5173
+
 let x = 233
 
 const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: `http://localhost:${CLIENT_PORT}`,
     methods: ["GET", "POST"]
   }
 })
@@ -77,7 +82,8 @@ io.on('connection', (socket) => {
           host: socket.id,
           opponent: ''
         },
-        status: 'waiting'
+        status: 'waiting',
+        pendingPromotion: null
       }
       //assign color
       socket.emit('color', 'white')
@@ -106,8 +112,39 @@ io.on('connection', (socket) => {
     let gameId = data.gameId
     let move = data.move
     if(games[gameId].status === 'ready') {
-      games[gameId].game.move(move)
-      sendPosition(io.to(gameId), gameId)
+      try {
+        // Attempt the move
+        let result = games[gameId].game.move(move)
+        
+        if (result) {
+          // Check if this was a pawn promotion
+          if (result.flags && result.flags.includes('p')) {
+            // Pawn promotion detected - don't send position yet
+            games[gameId].pendingPromotion = {
+              square: result.to,
+              color: result.color,
+              move: move,
+              from: result.from
+            }
+            
+            // Send promotion required event
+            io.to(gameId).emit('promotionRequired', {
+              square: result.to,
+              color: result.color,
+              availablePieces: ['q', 'r', 'b', 'n'],
+              from: result.from
+            })
+          } else {
+            // Regular move - send position update
+            sendPosition(io.to(gameId), gameId)
+          }
+        } else {
+          // Invalid move
+          socket.emit('invalidMove', { error: 'Invalid move' })
+        }
+      } catch (error) {
+        socket.emit('invalidMove', { error: error.message })
+      }
     }
   })
 
@@ -122,6 +159,38 @@ io.on('connection', (socket) => {
     if(games[gameId].status === 'ready') {
       games[gameId].game.undo()
       sendPosition(io.to(gameId), gameId)
+    }
+  })
+
+  socket.on('promote', (data) => {
+    let gameId = data.gameId
+    let piece = data.piece // 'q', 'r', 'b', or 'n'
+    
+    if(games[gameId].status === 'ready' && games[gameId].pendingPromotion) {
+      try {
+        // Complete the promotion move
+        let promotionMove = games[gameId].pendingPromotion.move + piece
+        let result = games[gameId].game.move(promotionMove)
+        
+        if (result) {
+          // Clear pending promotion
+          games[gameId].pendingPromotion = null
+          
+          // Send updated position
+          sendPosition(io.to(gameId), gameId)
+          
+          // Send confirmation
+          io.to(gameId).emit('promotionComplete', {
+            square: result.to,
+            piece: piece,
+            color: result.color
+          })
+        } else {
+          socket.emit('invalidPromotion', { error: 'Invalid promotion' })
+        }
+      } catch (error) {
+        socket.emit('invalidPromotion', { error: error.message })
+      }
     }
   })
 
@@ -201,6 +270,6 @@ app.get('/moves', (req, res) => {
   }
 })
 
-server.listen(3001, ()=>{
-  console.log('Server is online')
+server.listen(PORT, ()=>{
+  console.log(`Server is online on port ${PORT}`)
 })
