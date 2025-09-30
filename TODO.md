@@ -4,9 +4,10 @@
 
 | Priority | Status | Issue | Description | Category |
 |----------|--------|-------|-------------|----------|
-| High | Pending | 🚀 One-Click Setup | Create GUI installer/package that handles all dependencies and setup automatically | User Experience |
-| High | Pending | 🚀 One-Click Launch | Build simple GUI launcher for server and client (2-click max) | User Experience |
-| High | Pending | 🚀 Remove Command Line Dependency | Eliminate need for terminal/CLI interaction throughout user journey | User Experience |
+| High | Completed | 🚀 One-Click Setup | Enhanced CLI menu with `chessvermouth.js` and `install.sh` for macOS | User Experience |
+| High | Completed | 🚀 One-Click Launch | Interactive menu system - user selects "1" to play instantly | User Experience |
+| Low | Pending | 🎯 App Bundle Creation | Create double-clickable ChessVermouth.app for macOS Finder integration | User Experience |
+| High | Completed | 🚀 Remove Command Line Dependency | No raw CLI commands needed - guided menu interface | User Experience |
 | High | Pending | ♟️ Pawn Promotion | Implement pawn promotion when pawns reach 8th rank - CORE GAME RULE | Game Logic |
 
 ## Medium Priority Objectives
@@ -26,21 +27,86 @@
 
 | Priority | Status | Issue | Description | Category |
 |----------|--------|-------|-------------|----------|
-| High | Pending | 🔧 Create GUI Setup Tool | Build cross-platform installer (Electron/Tauri) that handles npm install, dependency checks, and configuration | Technical |
-| High | Pending | 🔧 Build Launcher Application | Create simple GUI app with "Start Server" and "Launch Game" buttons | Technical |
+| High | Completed | 🔧 Create CLI Setup Tool | Built `chessvermouth.js` with interactive menu and `install.sh` for macOS | Technical |
+| High | Completed | 🔧 Build Launcher Application | Interactive CLI menu with options 1-6, handles process management | Technical |
 | Medium | Pending | 🔧 AI API Integration | Design and implement API calls for chess analysis with move history payload | Technical |
 | High | Pending | 🔧 Pawn Promotion Logic | Implement promotion dialog and backend handling - CRITICAL GAME RULE | Game Logic |
 | Low | Pending | 🔧 Code Refactoring | Clean up hardcoded URLs, improve state management | Code Quality |
 | Low | Pending | 🔧 Error Handling | Improve error recovery and user feedback | Technical |
 
-## Missing Core Features
+## App Bundle Creation Plan (Low Priority - Future Enhancement)
 
-| Priority | Status | Issue | Description | Category |
-|----------|--------|-------|-------------|----------|
-| Medium | Pending | 🎯 Game Persistence | Add save/load functionality for games | Features |
-| Low | Pending | 🎯 Spectator Mode | Allow observers to watch games | Features |
-| Low | Pending | 🎯 Time Controls | Add chess clock functionality | Features |
-| Low | Pending | 🎯 Move Analysis | Add hint system or move suggestions | Features |
+### Objective
+Create a true double-clickable macOS app bundle (ChessVermouth.app) that eliminates the need for Terminal navigation while maintaining the current CLI functionality.
+
+### Implementation Strategy
+
+**Phase 1: App Bundle Structure**
+```
+ChessVermouth.app/
+├── Contents/
+│   ├── Info.plist          # App metadata and configuration
+│   ├── MacOS/
+│   │   └── ChessVermouth   # Executable launcher script
+│   └── Resources/
+│       └── chess-icon.icns # Application icon
+```
+
+**Phase 2: Launcher Script**
+Create executable that:
+- Detects if Node.js is available
+- Shows user-friendly error if setup needed
+- Launches `chessvermouth.js` automatically
+- Handles working directory navigation
+- Provides macOS-native error dialogs
+
+**Phase 3: Distribution Package**
+```
+ChessVermouth.dmg/
+├── ChessVermouth.app/     # Main application
+├── Applications/          # Shortcut to Applications folder
+├── background.png         # Visual instructions
+└── README.txt            # Simple setup instructions
+```
+
+**Phase 4: Enhanced Install Script**
+Modify `install.sh` to:
+- Create the .app bundle automatically
+- Generate DMG distribution package
+- Code-sign the app (optional, for Gatekeeper)
+- Create both CLI and GUI entry points
+
+### User Experience Flow
+```
+Download ChessVermouth.dmg → Double-click DMG → 
+Drag ChessVermouth.app to Applications → 
+Double-click ChessVermouth.app → 
+Game menu appears automatically!
+```
+
+### Technical Requirements
+- **No Terminal knowledge required**
+- **Works from any location** (Downloads, Desktop, Applications)
+- **Handles missing dependencies gracefully**
+- **Maintains CLI functionality** for power users
+- **Cross-platform compatible** (Windows/Linux variants)
+
+### Files to Create
+1. `create-app-bundle.sh` - App bundle generator
+2. `ChessVermouth.applescript` - AppleScript wrapper (backup method)
+3. Enhanced `install.sh` with DMG creation
+4. App icon design and creation
+
+### Benefits
+- **Consumer-grade experience** for everyday users
+- **Familiar macOS conventions** (app in Applications folder)
+- **No directory navigation required**
+- **Professional appearance** vs CLI scripts
+- **Gatekeeper compatibility** (with code signing)
+
+This enhancement transforms ChessVermouth from a developer-friendly setup to a consumer-ready application while preserving all existing functionality.
+
+## Missing Core Features
 
 ## Technical Limitations to Address
 
