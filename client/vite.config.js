@@ -12,6 +12,8 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [react()],
     server: {
+      // Bind to all interfaces so other LAN devices can access Dev server
+      host: true,
       port: port,
       strictPort: false // Allow fallback to other ports if specified port is busy
     }

@@ -18,14 +18,26 @@ let x = 233
 // Get LAN IP address for network multiplayer
 function getLanIp() {
   const interfaces = os.networkInterfaces()
+  let fallback = 'localhost'
+  let firstExternal = null
   for (const name of Object.keys(interfaces)) {
-    for (const interface of interfaces[name]) {
-      if (interface.family === 'IPv4' && !interface.internal && interface.address.startsWith('192.168.')) {
-        return interface.address
+    for (const netIf of interfaces[name]) {
+      if (netIf.family === 'IPv4' && !netIf.internal) {
+        // Prefer RFC1918 private ranges
+        if (
+          netIf.address.startsWith('10.') ||
+          netIf.address.startsWith('192.168.') ||
+          (netIf.address.startsWith('172.') && (() => { const n = parseInt(netIf.address.split('.')[1], 10); return n >= 16 && n <= 31 })())
+        ) {
+          return netIf.address
+        }
+        if (!firstExternal) {
+          firstExternal = netIf.address
+        }
       }
     }
   }
-  return 'localhost' // fallback
+  return firstExternal || fallback
 }
 
 const LAN_IP = process.env.LAN_IP || getLanIp()
@@ -34,7 +46,8 @@ const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
-    origin: [`http://localhost:${CLIENT_PORT}`, `http://${LAN_IP}:${CLIENT_PORT}`, `http://*:${CLIENT_PORT}`],
+    // Allow dev clients from any origin (LAN dev convenience)
+    origin: '*',
     methods: ["GET", "POST"],
     credentials: true
   }

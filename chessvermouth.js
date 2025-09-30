@@ -300,6 +300,12 @@ async function startServer() {
   return new Promise(async (resolve, reject) => {
     try {
       const npmCmd = await findNpmCommand();
+      // Ensure we pick an available server port right before starting
+      const desiredServerPort = await findAvailablePort(portConfig.serverPort || 3001) || 3001;
+      if (desiredServerPort !== portConfig.serverPort) {
+        log(`ℹ️  Selected free server port ${desiredServerPort} (was ${portConfig.serverPort})`, 'blue');
+        portConfig.serverPort = desiredServerPort;
+      }
       log(`🚀 Starting chess server on port ${portConfig.serverPort} using ${npmCmd}...`, 'yellow');
       
       // Get local network info for display
@@ -318,7 +324,8 @@ async function startServer() {
       
       if (lanIp !== 'localhost') {
         log(`🌐 Detected LAN IP: ${lanIp}`, 'blue');
-        log(`📱 For LAN multiplayer, other devices connect to: http://${lanIp}:${portConfig.clientPort}?server=${lanIp}`, 'cyan');
+        // Client port may change when Vite starts; final LAN URL is printed after client starts.
+        log(`📱 LAN hint: client will be on http://${lanIp}:<clientPort> (exact port printed after client starts)`, 'cyan');
       }
       
       // Pass the dynamic port to the server via environment variable
@@ -338,6 +345,7 @@ async function startServer() {
       }
       
       serverProcess = spawn(npmCmd, ['run', 'start'], spawnOptions);
+      let retrying = false;
       
       serverProcess.stdout.on('data', (data) => {
         const output = data.toString();
@@ -407,6 +415,26 @@ async function startServer() {
       
       serverProcess.stderr.on('data', (data) => {
         log(`Server error: ${data}`, 'red');
+        const text = data.toString();
+        if (text.includes('EADDRINUSE')) {
+          log('⚠️  Server port in use; trying next available port...', 'yellow');
+          try {
+            // Try again on next available port
+            findAvailablePort((portConfig.serverPort || 3001) + 1).then((next) => {
+              if (!next) {
+                reject(new Error('No available server ports found'));
+                return;
+              }
+              portConfig.serverPort = next;
+              retrying = true;
+              serverProcess.kill();
+              // Restart server
+              startServer().then(resolve).catch(reject);
+            });
+          } catch (e) {
+            reject(e);
+          }
+        }
       });
       
       serverProcess.on('error', (error) => {
@@ -419,6 +447,10 @@ async function startServer() {
       });
       
       serverProcess.on('close', (code) => {
+        if (retrying) {
+          // We intentionally killed to retry on a new port; don't reject here.
+          return;
+        }
         if (code !== 0) {
           reject(new Error(`Server exited with code ${code}`));
         }
@@ -433,6 +465,12 @@ async function startClient() {
   return new Promise(async (resolve, reject) => {
     try {
       const npmCmd = await findNpmCommand();
+      // Ensure we pick an available client port right before starting
+      const desiredClientPort = await findAvailablePort(portConfig.clientPort || 5173) || 5173;
+      if (desiredClientPort !== portConfig.clientPort) {
+        log(`ℹ️  Selected free client port ${desiredClientPort} (was ${portConfig.clientPort})`, 'blue');
+        portConfig.clientPort = desiredClientPort;
+      }
       log(`🚀 Starting chess client on port ${portConfig.clientPort} using ${npmCmd}...`, 'yellow');
       
       // Pass the dynamic port to the client via environment variable
@@ -453,19 +491,49 @@ async function startClient() {
       
       clientProcess = spawn(npmCmd, ['run', 'dev'], spawnOptions);
       
+      let opened = false;
+      let fallbackTimer = null;
+      const tryOpenFromOutput = (output) => {
+        // Try to extract actual Vite URL (handles auto-fallback ports). Prefer 'Local' line.
+        const urlMatch = output.match(/(http:\/\/[0-9A-Za-z\.-]+:[0-9]{2,5})/i);
+        if (urlMatch && urlMatch[1] && !opened) {
+          const url = urlMatch[1];
+          // Sync client port from parsed URL if different
+          const portFromUrl = parseInt(url.split(':').pop(), 10);
+          if (Number.isFinite(portFromUrl) && portFromUrl !== portConfig.clientPort) {
+            portConfig.clientPort = portFromUrl;
+          }
+          opened = true;
+          if (fallbackTimer) clearTimeout(fallbackTimer);
+          setTimeout(() => {
+            exec(`${config.browserCommand} ${url}`);
+            notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
+          }, 500);
+          return true;
+        }
+        return false;
+      };
+
       clientProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
-          log(`✅ Client started successfully on port ${portConfig.clientPort}!`, 'green');
-          log(`🌐 Client URL: http://localhost:${portConfig.clientPort}`, 'blue');
-          
-          // Open browser
-          setTimeout(() => {
-            exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}`);
-            notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
-          }, 2000);
-          
-          resolve();
+        if (output.toLowerCase().includes('local:') || output.includes('ready in') || output.includes(`:${portConfig.clientPort}`)) {
+          // Try to open only when we can parse a URL; otherwise schedule a short fallback
+          const openedNow = tryOpenFromOutput(output);
+          if (!opened && !fallbackTimer) {
+            fallbackTimer = setTimeout(() => {
+              if (!opened) {
+                const url = `http://localhost:${portConfig.clientPort}`;
+                exec(`${config.browserCommand} ${url}`);
+                notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
+                opened = true;
+              }
+            }, 1500);
+          }
+          if (output.toLowerCase().includes('local:') || openedNow) {
+            log(`✅ Client started successfully on port ${portConfig.clientPort}!`, 'green');
+            log(`🌐 Client URL: http://localhost:${portConfig.clientPort}`, 'blue');
+            resolve();
+          }
         }
       });
       
@@ -498,7 +566,29 @@ async function startFullGame() {
     await startServer();
     await startClient();
     log('🎉 Chess game is ready! Enjoy playing!', 'green');
-    log(`📍 Game URL: http://localhost:${portConfig.clientPort}`, 'blue');
+    // Summarize access URLs using current client port and detected LAN IP
+    log(`📍 Game URL (Local): http://localhost:${portConfig.clientPort}`, 'blue');
+    try {
+      const interfaces = require('os').networkInterfaces();
+      let lanIp = null;
+      for (const name of Object.keys(interfaces)) {
+        for (const netIf of interfaces[name]) {
+          if (netIf.family === 'IPv4' && !netIf.internal) {
+            if (
+              netIf.address.startsWith('10.') ||
+              netIf.address.startsWith('192.168.') ||
+              (netIf.address.startsWith('172.') && (() => { const n = parseInt(netIf.address.split('.')[1], 10); return n >= 16 && n <= 31 })())
+            ) {
+              lanIp = netIf.address; break;
+            }
+          }
+        }
+        if (lanIp) break;
+      }
+      if (lanIp) {
+        log(`📡 Game URL (LAN):   http://${lanIp}:${portConfig.clientPort}/?server=${lanIp}`, 'blue');
+      }
+    } catch {}
   } catch (error) {
     log(`❌ Failed to start game: ${error.message}`, 'red');
     notify('ChessVermouth', 'Failed to start game');
@@ -527,20 +617,56 @@ async function startHotSeatMode() {
         spawnOptions.shell = true;
       }
       
+      // Ensure client dev port is available
+      const desiredClientPort = await findAvailablePort(portConfig.clientPort || 5173) || 5173;
+      if (desiredClientPort !== portConfig.clientPort) {
+        log(`ℹ️  Selected free client port ${desiredClientPort} (was ${portConfig.clientPort})`, 'blue');
+        portConfig.clientPort = desiredClientPort;
+        spawnOptions.env.VITE_PORT = portConfig.clientPort.toString();
+      }
+
       clientProcess = spawn(npmCmd, ['run', 'dev'], spawnOptions);
       
+      let opened = false;
+      let fallbackTimer = null;
+      const tryOpenFromOutput = (output) => {
+        const urlMatch = output.match(/(http:\/\/[0-9A-Za-z\.-]+:[0-9]{2,5})/i);
+        if (urlMatch && urlMatch[1] && !opened) {
+          const baseUrl = urlMatch[1];
+          const portFromUrl = parseInt(baseUrl.split(':').pop(), 10);
+          if (Number.isFinite(portFromUrl) && portFromUrl !== portConfig.clientPort) {
+            portConfig.clientPort = portFromUrl;
+          }
+          const url = `${baseUrl}?mode=hotseat`;
+          opened = true;
+          if (fallbackTimer) clearTimeout(fallbackTimer);
+          setTimeout(() => {
+            exec(`${config.browserCommand} ${url}`);
+            notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
+          }, 500);
+          return true;
+        }
+        return false;
+      };
+
       clientProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
-          log(`✅ Hot Seat Mode ready on port ${portConfig.clientPort}!`, 'green');
-          
-          // Open browser with hot seat parameter
-          setTimeout(() => {
-            exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}?mode=hotseat`);
-            notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
-          }, 2000);
-          
-          resolve();
+        if (output.toLowerCase().includes('local:') || output.includes('ready in') || output.includes(`:${portConfig.clientPort}`)) {
+          const openedNow = tryOpenFromOutput(output);
+          if (!opened && !fallbackTimer) {
+            fallbackTimer = setTimeout(() => {
+              if (!opened) {
+                const url = `http://localhost:${portConfig.clientPort}?mode=hotseat`;
+                exec(`${config.browserCommand} ${url}`);
+                notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
+                opened = true;
+              }
+            }, 1500);
+          }
+          if (output.toLowerCase().includes('local:') || openedNow) {
+            log(`✅ Hot Seat Mode ready on port ${portConfig.clientPort}!`, 'green');
+            resolve();
+          }
         }
       });
       

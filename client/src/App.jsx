@@ -12,7 +12,11 @@ const sounds = { move, check, capture, castle, gameOver }
 // Detect hot seat mode from URL parameter
 const urlParams = new URLSearchParams(window.location.search);
 const isHotSeatMode = urlParams.get('mode') === 'hotseat';
-const serverIp = urlParams.get('server') || import.meta.env.VITE_SERVER_IP || 'localhost';
+// Prefer explicit ?server=, then env, then current host if not localhost, else fallback to 'localhost'
+const inferredHost = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+  ? window.location.hostname
+  : 'localhost';
+const serverIp = urlParams.get('server') || import.meta.env.VITE_SERVER_IP || inferredHost;
 
 function App() {
   const tableEnd = useRef(null)
@@ -33,6 +37,11 @@ function App() {
 
   // Socket connection for network mode
   const [socket, setSocket] = useState(null)
+  const [serverPort, setServerPort] = useState(() => {
+    const envPort = import.meta.env.VITE_SERVER_PORT
+    const n = envPort ? parseInt(envPort) : 3001
+    return Number.isFinite(n) ? n : 3001
+  })
 
   // Hot seat mode game state
   const [hotSeatGame, setHotSeatGame] = useState(null)
@@ -80,8 +89,7 @@ function App() {
     } else {
       // Network mode: existing logic
       if (turn === color[0]) {
-        const serverPort = import.meta.env.VITE_SERVER_PORT || '3001'
-      let result = await fetch(`http://${serverIp}:${serverPort}/moves?square=${square}&gameId=${gameId}`)
+        let result = await fetch(`http://${serverIp}:${serverPort}/moves?square=${square}&gameId=${gameId}`)
         let data = await result.json()
         let moves = data.moves.map(move => move.to)
         setAvailableMoves(moves)
@@ -107,9 +115,38 @@ function App() {
     // Network mode: connect to socket server
     const connectSocket = async () => {
       const io = await import('socket.io-client')
-      // Use dynamic server port from environment variable or default
-      const serverPort = import.meta.env.VITE_SERVER_PORT || '3001'
-      const newSocket = io.connect(`http://${serverIp}:${serverPort}`)
+      // Try env/default then a small range to handle occupied ports
+      const base = (() => {
+        const envPort = import.meta.env.VITE_SERVER_PORT
+        const n = envPort ? parseInt(envPort) : 3001
+        return Number.isFinite(n) ? n : 3001
+      })()
+      const candidates = Array.from({ length: 10 }, (_, i) => base + i)
+
+      let connectedSocket = null
+      for (const p of candidates) {
+        try {
+          const s = io.connect(`http://${serverIp}:${p}`, { timeout: 1200, reconnection: false })
+          const ok = await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(false), 1200)
+            s.on('connect', () => { clearTimeout(timer); resolve(true) })
+            s.on('connect_error', () => { clearTimeout(timer); resolve(false) })
+            s.on('error', () => { clearTimeout(timer); resolve(false) })
+          })
+          if (ok) {
+            connectedSocket = s
+            setServerPort(p)
+            break
+          } else {
+            s.close()
+          }
+        } catch (_) {
+          // try next
+        }
+      }
+
+      if (!connectedSocket) return
+      const newSocket = connectedSocket
       setSocket(newSocket)
 
       const handlePosition = (data) => {
