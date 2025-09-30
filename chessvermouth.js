@@ -21,6 +21,49 @@ const isMacOS = platform === 'darwin';
 const isWindows = platform === 'win32';
 const isLinux = platform === 'linux';
 
+// Helper function to find npm command
+// defaults to 'npm' if not found
+async function findNpmCommand() {
+  return new Promise((resolve) => {
+    // Try different npm command variations
+    const npmCommands = isWindows ? ['npm.cmd', 'npm'] : ['npm'];
+    
+    for (const cmd of npmCommands) {
+      exec(`which ${cmd}`, (error) => {
+        if (!error) {
+          resolve(cmd);
+          return;
+        }
+      });
+    }
+    
+    // Fallback: try to execute npm directly
+    exec('npm --version', (error) => {
+      if (!error) {
+        resolve('npm');
+      } else {
+        // Last resort: check common Windows npm locations
+        if (isWindows) {
+          const commonPaths = [
+            'C:\\Program Files\\nodejs\\npm.cmd',
+            'C:\\Program Files (x86)\\nodejs\\npm.cmd',
+            `${process.env.APPDATA}\\npm\\npm.cmd`,
+            `${process.env.LOCALAPPDATA}\\npm\\npm.cmd`
+          ];
+          
+          for (const npmPath of commonPaths) {
+            if (fs.existsSync(npmPath)) {
+              resolve(npmPath);
+              return;
+            }
+          }
+        }
+        resolve('npm'); // Final fallback
+      }
+    });
+  });
+}
+
 const config = {
   darwin: {
     name: 'macOS',
@@ -253,85 +296,119 @@ let portConfig = {
   clientPort: 5173
 };
 
-function startServer() {
-  return new Promise((resolve, reject) => {
-    log(`🚀 Starting chess server on port ${portConfig.serverPort}...`, 'yellow');
-    
-    // Pass the dynamic port to the server via environment variable
-    serverProcess = spawn('npm', ['run', 'start'], {
-      cwd: path.join(__dirname, 'server'),
-      stdio: 'pipe',
-      env: { ...process.env, PORT: portConfig.serverPort.toString() }
-    });
-    
-    serverProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      if (output.includes('Server is online')) {
-        log(`✅ Server started successfully on port ${portConfig.serverPort}!`, 'green');
-        notify('ChessVermouth', `Server is ready on port ${portConfig.serverPort}`);
-        resolve();
+async function startServer() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const npmCmd = await findNpmCommand();
+      log(`🚀 Starting chess server on port ${portConfig.serverPort} using ${npmCmd}...`, 'yellow');
+      
+      // Pass the dynamic port to the server via environment variable
+      const spawnOptions = {
+        cwd: path.join(__dirname, 'server'),
+        stdio: 'pipe',
+        env: { ...process.env, PORT: portConfig.serverPort.toString() }
+      };
+      
+      // Use shell on Windows for better npm command handling
+      if (isWindows) {
+        spawnOptions.shell = true;
       }
-    });
-    
-    serverProcess.stderr.on('data', (data) => {
-      log(`Server error: ${data}`, 'red');
-    });
-    
-    serverProcess.on('error', (error) => {
+      
+      serverProcess = spawn(npmCmd, ['run', 'start'], spawnOptions);
+      
+      serverProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        if (output.includes('Server is online')) {
+          log(`✅ Server started successfully on port ${portConfig.serverPort}!`, 'green');
+          notify('ChessVermouth', `Server is ready on port ${portConfig.serverPort}`);
+          resolve();
+        }
+      });
+      
+      serverProcess.stderr.on('data', (data) => {
+        log(`Server error: ${data}`, 'red');
+      });
+      
+      serverProcess.on('error', (error) => {
+        log(`❌ Failed to start server: ${error.message}`, 'red');
+        if (error.code === 'ENOENT') {
+          log('💡 Make sure Node.js and npm are installed and in your PATH', 'yellow');
+          log('💡 On Windows, try running as Administrator or check your Node.js installation', 'yellow');
+        }
+        reject(error);
+      });
+      
+      serverProcess.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Server exited with code ${code}`));
+        }
+      });
+    } catch (error) {
       reject(error);
-    });
-    
-    serverProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Server exited with code ${code}`));
-      }
-    });
+    }
   });
 }
 
-function startClient() {
-  return new Promise((resolve, reject) => {
-    log(`🚀 Starting chess client on port ${portConfig.clientPort}...`, 'yellow');
-    
-    // Pass the dynamic port to the client via environment variable
-    clientProcess = spawn('npm', ['run', 'dev'], {
-      cwd: path.join(__dirname, 'client'),
-      stdio: 'pipe',
-      env: { 
-        ...process.env, 
-        VITE_PORT: portConfig.clientPort.toString(),
-        VITE_SERVER_PORT: portConfig.serverPort.toString()
+async function startClient() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const npmCmd = await findNpmCommand();
+      log(`🚀 Starting chess client on port ${portConfig.clientPort} using ${npmCmd}...`, 'yellow');
+      
+      // Pass the dynamic port to the client via environment variable
+      const spawnOptions = {
+        cwd: path.join(__dirname, 'client'),
+        stdio: 'pipe',
+        env: { 
+          ...process.env, 
+          VITE_PORT: portConfig.clientPort.toString(),
+          VITE_SERVER_PORT: portConfig.serverPort.toString()
+        }
+      };
+      
+      // Use shell on Windows for better npm command handling
+      if (isWindows) {
+        spawnOptions.shell = true;
       }
-    });
-    
-    clientProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
-        log(`✅ Client started successfully on port ${portConfig.clientPort}!`, 'green');
-        
-        // Open browser
-        setTimeout(() => {
-          exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}`);
-          notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
-        }, 2000);
-        
-        resolve();
-      }
-    });
-    
-    clientProcess.stderr.on('data', (data) => {
-      log(`Client error: ${data}`, 'red');
-    });
-    
-    clientProcess.on('error', (error) => {
+      
+      clientProcess = spawn(npmCmd, ['run', 'dev'], spawnOptions);
+      
+      clientProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
+          log(`✅ Client started successfully on port ${portConfig.clientPort}!`, 'green');
+          
+          // Open browser
+          setTimeout(() => {
+            exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}`);
+            notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
+          }, 2000);
+          
+          resolve();
+        }
+      });
+      
+      clientProcess.stderr.on('data', (data) => {
+        log(`Client error: ${data}`, 'red');
+      });
+      
+      clientProcess.on('error', (error) => {
+        log(`❌ Failed to start client: ${error.message}`, 'red');
+        if (error.code === 'ENOENT') {
+          log('💡 Make sure Node.js and npm are installed and in your PATH', 'yellow');
+          log('💡 On Windows, try running as Administrator or check your Node.js installation', 'yellow');
+        }
+        reject(error);
+      });
+      
+      clientProcess.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Client exited with code ${code}`));
+        }
+      });
+    } catch (error) {
       reject(error);
-    });
-    
-    clientProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Client exited with code ${code}`));
-      }
-    });
+    }
   });
 }
 
@@ -348,48 +425,65 @@ async function startFullGame() {
 }
 
 async function startHotSeatMode() {
-  return new Promise((resolve, reject) => {
-    log(`🎮 Starting Hot Seat Mode on port ${portConfig.clientPort}...`, 'yellow');
-    notify('ChessVermouth', 'Starting Hot Seat Mode');
-    
-    clientProcess = spawn('npm', ['run', 'dev'], {
-      cwd: path.join(__dirname, 'client'),
-      stdio: 'pipe',
-      env: { 
-        ...process.env, 
-        VITE_PORT: portConfig.clientPort.toString(),
-        VITE_SERVER_PORT: portConfig.serverPort.toString()
+  return new Promise(async (resolve, reject) => {
+    try {
+      const npmCmd = await findNpmCommand();
+      log(`🎮 Starting Hot Seat Mode on port ${portConfig.clientPort} using ${npmCmd}...`, 'yellow');
+      notify('ChessVermouth', 'Starting Hot Seat Mode');
+      
+      const spawnOptions = {
+        cwd: path.join(__dirname, 'client'),
+        stdio: 'pipe',
+        env: { 
+          ...process.env, 
+          VITE_PORT: portConfig.clientPort.toString(),
+          VITE_SERVER_PORT: portConfig.serverPort.toString()
+        }
+      };
+      
+      // Use shell on Windows for better npm command handling
+      if (isWindows) {
+        spawnOptions.shell = true;
       }
-    });
-    
-    clientProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
-        log(`✅ Hot Seat Mode ready on port ${portConfig.clientPort}!`, 'green');
-        
-        // Open browser with hot seat parameter
-        setTimeout(() => {
-          exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}?mode=hotseat`);
-          notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
-        }, 2000);
-        
-        resolve();
-      }
-    });
-    
-    clientProcess.stderr.on('data', (data) => {
-      log(`Client error: ${data}`, 'red');
-    });
-    
-    clientProcess.on('error', (error) => {
+      
+      clientProcess = spawn(npmCmd, ['run', 'dev'], spawnOptions);
+      
+      clientProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        if (output.includes('ready in') || output.includes(portConfig.clientPort.toString())) {
+          log(`✅ Hot Seat Mode ready on port ${portConfig.clientPort}!`, 'green');
+          
+          // Open browser with hot seat parameter
+          setTimeout(() => {
+            exec(`${config.browserCommand} http://localhost:${portConfig.clientPort}?mode=hotseat`);
+            notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
+          }, 2000);
+          
+          resolve();
+        }
+      });
+      
+      clientProcess.stderr.on('data', (data) => {
+        log(`Client error: ${data}`, 'red');
+      });
+      
+      clientProcess.on('error', (error) => {
+        log(`❌ Failed to start Hot Seat Mode: ${error.message}`, 'red');
+        if (error.code === 'ENOENT') {
+          log('💡 Make sure Node.js and npm are installed and in your PATH', 'yellow');
+          log('💡 On Windows, try running as Administrator or check your Node.js installation', 'yellow');
+        }
+        reject(error);
+      });
+      
+      clientProcess.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Client exited with code ${code}`));
+        }
+      });
+    } catch (error) {
       reject(error);
-    });
-    
-    clientProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Client exited with code ${code}`));
-      }
-    });
+    }
   });
 }
 
@@ -513,6 +607,10 @@ async function main() {
       log('   node chessvermouth.js (interactive menu)', 'cyan');
       log('   npm install && npm run start (server)', 'cyan');
       log('   npm run dev (client)', 'cyan');
+      if (isWindows) {
+        log('💡 Windows users: Make sure Node.js is properly installed with npm in PATH', 'yellow');
+        log('💡 If npm commands fail, try running in Command Prompt as Administrator', 'yellow');
+      }
       rl.close();
       return;
     }
