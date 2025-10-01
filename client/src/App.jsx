@@ -272,13 +272,34 @@ function App() {
     setAvailableMoves([])
   }, [history, soundboard])
 
-  // Auto-open/close the panel based on status in online mode
+  // Keep control panel collapsed by default and whenever lobby overlay is shown
   useEffect(() => {
     if (isHotSeatMode) return
-    if (status === 'ready') {
+    if (status === 'ready' || status === 'lobby' || status === 'fail') {
       setIsPanelOpen(false)
-    } else if (status === 'lobby' || status === 'waiting' || status === 'fail') {
-      setIsPanelOpen(true)
+    }
+    // For other statuses (e.g., waiting), do not auto-open; respect user toggle
+  }, [status, isHotSeatMode])
+
+  // Lock page scroll when lobby overlay is open (prevents iOS bounce showing content)
+  useEffect(() => {
+    const overlayOpen = !isHotSeatMode && (status === 'lobby' || status === 'fail')
+    if (!overlayOpen) return
+    const html = document.documentElement
+    const body = document.body
+    const prevHtmlOverflow = html.style.overflow
+    const prevBodyOverflow = body.style.overflow
+    const prevHtmlOverscroll = html.style.overscrollBehavior
+    const prevBodyOverscroll = body.style.overscrollBehavior
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    html.style.overscrollBehavior = 'none'
+    body.style.overscrollBehavior = 'contain'
+    return () => {
+      html.style.overflow = prevHtmlOverflow
+      body.style.overflow = prevBodyOverflow
+      html.style.overscrollBehavior = prevHtmlOverscroll
+      body.style.overscrollBehavior = prevBodyOverscroll
     }
   }, [status, isHotSeatMode])
 
@@ -482,6 +503,30 @@ function App() {
         <div className='flex items-center justify-center'>
           {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color})}
         </div>
+
+        {/* Game Lobby overlay (does not affect ControlPanel) */}
+        {((status === 'lobby' || status === 'fail') && !isHotSeatMode) && (
+          <div className='fixed inset-x-0 top-0 z-[1200] w-screen h-[100dvh] flex items-center justify-center'>
+            <div className='absolute inset-0 bg-black/60 backdrop-blur-sm' aria-hidden='true'></div>
+            <div className='relative z-10 w-full max-w-sm mx-4' role='dialog' aria-modal='true' aria-label='Game Lobby'>
+              <GameJoinPanel
+                socket={socket}
+                status={status}
+                color={color}
+                gameId={gameId}
+                serverIp={serverIp}
+                serverInfo={serverInfo}
+                clientPort={clientPort}
+                isQrOpen={isQrOpen}
+                setIsQrOpen={setIsQrOpen}
+                qrDataUrl={qrDataUrl}
+                setQrDataUrl={setQrDataUrl}
+                qrLoading={qrLoading}
+                setQrLoading={setQrLoading}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Round context menu button (FAB on mobile) */}
         <div className='-mt-2 flex items-center justify-center w-full'>
@@ -847,18 +892,15 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
         if (!qrDataUrl) {
           let dataUrl = null
           try {
-            // Determine module color based on current theme
-            const prefersLight = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
-            const moduleColor = prefersLight ? '#000000' : '#FFFFFF'
-            const bgColor = prefersLight ? '#FFFFFF' : '#0000' // transparent on dark, white on light
+            // Generate QR with transparent background and white modules
             dataUrl = await QRCode.toDataURL(url, {
               errorCorrectionLevel: 'M',
               margin: 1,
               width: 240,
-              color: { dark: moduleColor, light: bgColor }
+              color: { dark: '#FFFFFF', light: '#0000' }
             })
           } catch (_) {
-            // Fallback to white background if transparent unsupported
+            // Fallback: white modules on black background (non-transparent)
             dataUrl = await QRCode.toDataURL(url, {
               errorCorrectionLevel: 'M',
               margin: 1,
@@ -921,7 +963,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
               </button>
               {isQrOpen && createPortal(
                 <div
-                  className='fixed z-[1000]'
+                  className='fixed z-[2000]'
                   style={{ top: qrPos.top, left: qrPos.left }}
                 >
                   <div
@@ -977,42 +1019,22 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 
 //render the correct panel based on the game status
 function Panel({ history, tableEnd, socket, status, color, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave }) {
-  //note tableEnd is a ref, i didnt want to rename it cuz id have to refactor :)
-  if ((status === 'lobby' || status === 'fail') && !isHotSeatMode) {
-    return (
-      <GameJoinPanel 
-        socket={socket}
-        status={status}
-        color={color}
-        gameId={gameId}
-        serverIp={serverIp}
-        serverInfo={serverInfo}
-        clientPort={clientPort}
-        isQrOpen={isQrOpen}
-        setIsQrOpen={setIsQrOpen}
-        qrDataUrl={qrDataUrl}
-        setQrDataUrl={setQrDataUrl}
-        qrLoading={qrLoading}
-        setQrLoading={setQrLoading}
-      />
-    )
-  } else {
-    return (
-      <ControlPanel
-        history={history}
-        tableEnd={tableEnd}
-        socket={socket}
-        status={status}
-        gameId={gameId}
-        isHotSeatMode={isHotSeatMode}
-        hotSeatCurrentPlayer={hotSeatCurrentPlayer}
-        hotSeatGame={hotSeatGame}
-        updateHotSeatPosition={updateHotSeatPosition}
-        onRequestReset={onRequestReset}
-        onRequestLeave={onRequestLeave}
-      />
-    )
-  }
+  // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
+  return (
+    <ControlPanel
+      history={history}
+      tableEnd={tableEnd}
+      socket={socket}
+      status={status}
+      gameId={gameId}
+      isHotSeatMode={isHotSeatMode}
+      hotSeatCurrentPlayer={hotSeatCurrentPlayer}
+      hotSeatGame={hotSeatGame}
+      updateHotSeatPosition={updateHotSeatPosition}
+      onRequestReset={onRequestReset}
+      onRequestLeave={onRequestLeave}
+    />
+  )
 }
 
 export default App
