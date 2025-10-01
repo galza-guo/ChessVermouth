@@ -16,11 +16,35 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+* { box-sizing: border-box; }
+
+html {
+  background-color: #0b0b0c; /* ensures no light gap on iOS overscroll */
+  overscroll-behavior: none;
+}
+
 body {
-  /*background-image: url('./assets/images/wood-bg.jpg');
-  background-size: cover;
-  background-attachment: fixed;*/
-  background-color: #1a1a1a;
+  margin: 0;
+  background: #0b0b0c; /* base fallback */
+  /* viewport height fallbacks for mobile toolbars */
+  min-height: 100vh;   /* fallback */
+  min-height: 100svh;  /* small viewport height (iOS Safari) */
+  min-height: 100dvh;  /* dynamic viewport height */
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root { min-height: 100%; }
+
+/* Fixed full-viewport background layer for iOS safe areas */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(1200px 600px at 10% -10%, rgba(34, 197, 94, 0.08), transparent 60%),
+              radial-gradient(900px 500px at 100% 10%, rgba(59, 130, 246, 0.06), transparent 60%),
+              linear-gradient(180deg, #0b0b0c 0%, #111113 100%);
 }
 
 a {
@@ -38,20 +62,7 @@ h1 {
 }
 
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.25rem;
-  font-family: inherit;
-  background-color: #1a1a1a;
   cursor: pointer;
-  transition: all 0.1s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:active {
-  background-color: #1f1f1f;
-  border-color: #960707;
 }
 
 
@@ -77,6 +88,76 @@ button:active {
   cursor: grabbing;
 }
 
+/* App UI components */
+@layer components {
+  .card {
+    @apply rounded-xl border border-white/10 bg-white/5 text-white shadow-lg shadow-black/30 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-900/30;
+  }
+  .btn-secondary {
+    @apply btn bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 shadow-sm;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 hover:bg-rose-500 text-white shadow-sm shadow-rose-900/30;
+  }
+
+  .input {
+    @apply w-full rounded-lg bg-zinc-900/60 border border-white/10 px-3 py-2 text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-md border border-white/10 bg-white/10 px-2 py-0.5 text-xs font-medium text-white/90;
+  }
+  .badge-warn {
+    @apply badge border-yellow-500/30 bg-yellow-500/10 text-yellow-300;
+  }
+  .badge-ok {
+    @apply badge border-emerald-500/30 bg-emerald-500/10 text-emerald-300;
+  }
+}
+
+/* Hide scrollbars across platforms (keeps scrolling) */
+* {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none;    /* Firefox */
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Opt-out: re-enable scrollbars when needed */
+.scrollbar-auto {
+  -ms-overflow-style: auto;
+  scrollbar-width: auto;
+}
+.scrollbar-auto::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scrollbar-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+/* Make the board responsive on small screens without changing logic */
+#board {
+  width: min(92vw, 500px);
+  height: min(92vw, 500px);
+}
+@media (min-width: 640px) {
+  #board {
+    width: 500px;
+    height: 500px;
+  }
+}
+
 /* Promotion Dialog Styles */
 .promotion-overlay {
   position: fixed;
@@ -92,13 +173,14 @@ button:active {
 }
 
 .promotion-dialog {
-  background: #2a2a2a;
-  border: 2px solid #444;
-  border-radius: 12px;
+  background: rgba(20, 20, 22, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
   padding: 24px;
   text-align: center;
-  min-width: 400px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  width: min(92vw, 520px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
 }
 
 .promotion-header {
@@ -118,29 +200,35 @@ button:active {
 }
 
 .promotion-options {
-  display: flex;
-  gap: 15px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   justify-content: center;
   margin-bottom: 20px;
+}
+@media (min-width: 420px) {
+  .promotion-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .promotion-piece {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 15px;
-  background: #333;
-  border: 2px solid #555;
-  border-radius: 8px;
+  padding: 14px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   color: white;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 80px;
+  min-width: 72px;
 }
 
 .promotion-piece:hover {
-  background: #444;
-  border-color: #777;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
   transform: translateY(-2px);
 }
 
@@ -149,8 +237,8 @@ button:active {
 }
 
 .piece-icon {
-  width: 60px;
-  height: 60px;
+  width: 56px;
+  height: 56px;
   margin-bottom: 8px;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
@@ -166,16 +254,22 @@ button:active {
 }
 
 .cancel-button {
-  background: #666;
-  border: 1px solid #888;
+  background: #3f3f46;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #fff;
-  padding: 8px 16px;
-  border-radius: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .cancel-button:hover {
-  background: #777;
-  border-color: #999;
+  background: #52525b;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Floating Action Button safe-area support */
+.fab {
+  bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  right: calc(1.25rem + env(safe-area-inset-right, 0px));
 }

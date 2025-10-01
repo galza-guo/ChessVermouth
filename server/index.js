@@ -7,6 +7,7 @@ app.use(cors())
 
 const { Chess } = require('chess.js')
 const os = require('os')
+const { execSync } = require('child_process')
 
 // Use dynamic port from environment variable or default to 3001
 const PORT = process.env.PORT || 3001
@@ -41,6 +42,61 @@ function getLanIp() {
 }
 
 const LAN_IP = process.env.LAN_IP || getLanIp()
+// Try to detect Wi-Fi SSID/Network Name (best-effort, platform-specific)
+function getNetworkName() {
+  // Allow override
+  if (process.env.NETWORK_NAME) return process.env.NETWORK_NAME
+  const platform = process.platform
+  try {
+    if (platform === 'darwin') {
+      // macOS: find Wi-Fi device then query its SSID
+      try {
+        const list = execSync('/usr/sbin/networksetup -listallhardwareports', { encoding: 'utf8' })
+        const blocks = list.split(/\n\n+/)
+        let wifiDev = null
+        for (const b of blocks) {
+          if (/Hardware Port:\s*(Wi-Fi|AirPort)/.test(b)) {
+            const m = b.match(/Device:\s*(en\d+)/)
+            if (m) { wifiDev = m[1]; break }
+          }
+        }
+        if (wifiDev) {
+          const out = execSync(`/usr/sbin/networksetup -getairportnetwork ${wifiDev}`, { encoding: 'utf8' })
+          const m = out.match(/Current Wi-Fi Network:\s*(.+)/)
+          if (m && m[1]) return m[1].trim()
+        }
+      } catch (_) {}
+      try {
+        const out = execSync('/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I', { encoding: 'utf8' })
+        const m = out.match(/\n\s*SSID:\s*(.+)\n/)
+        if (m && m[1]) return m[1].trim()
+      } catch (_) {}
+    } else if (platform === 'linux') {
+      // Linux: try iwgetid, then nmcli
+      try {
+        const out = execSync('iwgetid -r', { encoding: 'utf8' }).trim()
+        if (out) return out
+      } catch (_) {}
+      try {
+        const out = execSync('nmcli -t -f active,ssid dev wifi', { encoding: 'utf8' })
+        const line = out.split('\n').find(l => l.startsWith('yes:'))
+        if (line) {
+          const ssid = line.split(':').slice(1).join(':').trim()
+          if (ssid) return ssid
+        }
+      } catch (_) {}
+    } else if (platform === 'win32') {
+      // Windows: parse netsh output
+      try {
+        const out = execSync('netsh wlan show interfaces', { encoding: 'utf8' })
+        const m = out.match(/\n\s*SSID\s*:\s*(.+)\n/i)
+        if (m && m[1]) return m[1].trim()
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return null
+}
+const NETWORK_NAME = getNetworkName()
 
 const server = http.createServer(app)
 
@@ -311,7 +367,8 @@ app.get('/server-info', (req, res) => {
   res.send({
     lanIp: LAN_IP,
     port: PORT,
-    serverUrl: `http://${LAN_IP}:${PORT}`
+    serverUrl: `http://${LAN_IP}:${PORT}`,
+    networkName: NETWORK_NAME || null
   })
 })
 
@@ -319,4 +376,7 @@ server.listen(PORT, '0.0.0.0', ()=>{
   console.log(`Server is online on port ${PORT}`)
   console.log(`Server accessible on all network interfaces`)
   console.log(`LAN IP for multiplayer: ${LAN_IP}:${PORT}`)
+  if (NETWORK_NAME) {
+    console.log(`Detected Wi-Fi SSID: ${NETWORK_NAME}`)
+  }
 })

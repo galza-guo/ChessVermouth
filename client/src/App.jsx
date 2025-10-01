@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import useSound from 'use-sound'
 
 import { Chess } from 'chess.js'
+import QRCode from 'qrcode'
 
 import { bb, bk, bn, bp, bq, br, wb, wk, wn, wp, wq, wr, move, check, capture, castle, gameOver } from './assets'
 import PromotionDialog from './components/PromotionDialog'
+import ConfirmDialog from './components/ConfirmDialog'
 
 const icons = { bb, bk, bn, bp, bq, br, wb, wk, wn, wp, wq, wr }
 const sounds = { move, check, capture, castle, gameOver }
@@ -42,6 +45,16 @@ function App() {
     const n = envPort ? parseInt(envPort) : 3001
     return Number.isFinite(n) ? n : 3001
   })
+  // Frontend (client) port inferred from current page or env
+  const clientPort = useMemo(() => {
+    const fromLoc = typeof window !== 'undefined' && window.location && window.location.port
+      ? parseInt(window.location.port)
+      : null
+    if (Number.isFinite(fromLoc)) return fromLoc
+    const envPort = import.meta.env.VITE_PORT
+    const n = envPort ? parseInt(envPort) : 5173
+    return Number.isFinite(n) ? n : 5173
+  }, [])
 
   // Hot seat mode game state
   const [hotSeatGame, setHotSeatGame] = useState(null)
@@ -78,6 +91,36 @@ function App() {
   const [status, setStatus] = useState(isHotSeatMode ? 'ready' : 'lobby')
   const [promotionRequired, setPromotionRequired] = useState(false)
   const [promotionData, setPromotionData] = useState(null)
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const [serverInfo, setServerInfo] = useState(null)
+  // QR code state (shared to lobby renderer)
+  const [isQrOpen, setIsQrOpen] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState(null)
+  const [qrLoading, setQrLoading] = useState(false)
+  // Reset confirmation dialog
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  // Leave/New Game confirmation dialog
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false)
+  const performReset = () => {
+    if (isHotSeatMode && hotSeatGame) {
+      hotSeatGame.reset()
+      updateHotSeatPosition()
+    } else if (socket) {
+      socket.emit('reset', gameId)
+    }
+    setResetConfirmOpen(false)
+  }
+  const performLeave = () => {
+    if (isHotSeatMode) {
+      if (hotSeatGame) {
+        hotSeatGame.reset()
+        updateHotSeatPosition()
+      }
+    } else if (socket) {
+      socket.emit('leave', gameId)
+    }
+    setLeaveConfirmOpen(false)
+  }
 
   const getMoves = async (square) => {
     if (isHotSeatMode) {
@@ -228,6 +271,34 @@ function App() {
     setSelectedSquare('')
     setAvailableMoves([])
   }, [history, soundboard])
+
+  // Auto-open/close the panel based on status in online mode
+  useEffect(() => {
+    if (isHotSeatMode) return
+    if (status === 'ready') {
+      setIsPanelOpen(false)
+    } else if (status === 'lobby' || status === 'waiting' || status === 'fail') {
+      setIsPanelOpen(true)
+    }
+  }, [status, isHotSeatMode])
+
+  // Fetch server info (LAN IP) for display in lobby
+  useEffect(() => {
+    if (isHotSeatMode) return
+    const controller = new AbortController()
+    const fetchInfo = async () => {
+      try {
+        const res = await fetch(`http://${serverIp}:${serverPort}/server-info`, { signal: controller.signal })
+        if (!res.ok) return
+        const data = await res.json()
+        setServerInfo(data)
+      } catch (_) {
+        // ignore
+      }
+    }
+    fetchInfo()
+    return () => controller.abort()
+  }, [serverIp, serverPort, isHotSeatMode])
 
   const movePiece = (move) => {
     if (isHotSeatMode) {
@@ -387,30 +458,80 @@ function App() {
   }
 
   return (
-    <div className='absolute flex flex-wrap gap-3 items-center justify-center h-full w-full select-none'>
-      <div className='absolute text-white top-0 left-0 bg-black bg-opacity-50 p-2 rounded z-50'>
-        <div>status: {status}</div>
-        <div>color: {color}</div>
-        <div>gameId: {gameId}</div>
-        <div>turn: {turn}</div>
-        <div>mode: {isHotSeatMode ? 'hotseat' : 'network'}</div>
-        <div>hotSeatGame: {hotSeatGame ? 'yes' : 'no'}</div>
-        <div>board: {board ? 'loaded' : 'empty'}</div>
-      </div>
-      {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color})}
-      {panel({ 
-        history: history, 
-        tableEnd: tableEnd, 
-        socket: socket, 
-        status: status, 
-        color: color, 
-        gameId: gameId,
-        isHotSeatMode: isHotSeatMode,
-        hotSeatCurrentPlayer: hotSeatCurrentPlayer,
-        hotSeatGame: hotSeatGame,
-        updateHotSeatPosition: updateHotSeatPosition
-      })}
-      
+    <div className='min-h-[100svh] md:min-h-screen w-full text-zinc-100 select-none'>
+      {/* Header */}
+      <header className='sticky top-0 z-40 border-b border-white/10 bg-zinc-900/70 backdrop-blur'>
+        <div className='mx-auto max-w-5xl px-4 h-14 flex items-center justify-between'>
+          <div className='flex items-center gap-2'>
+            <img src="/Vermouth's Gambit (logo only).png" alt="Vermouth's Gambit logo" className='h-6 w-6 rounded' />
+            <span className='text-lg font-semibold tracking-tight'>Vermouth's Gambit</span>
+            <span className='badge'>{isHotSeatMode ? 'Hot Seat' : 'Online'}</span>
+            {status === 'waiting' && <span className='badge-warn'>Waiting</span>}
+          </div>
+          <div className='flex items-center gap-3 text-xs text-zinc-400'>
+            {turn && <span>Turn: <span className='text-emerald-400 font-medium'>{turn === 'w' ? 'White' : 'Black'}</span></span>}
+            {!isHotSeatMode && gameId && status === 'ready' && (
+              <span>Room: <span className='font-mono text-emerald-400'>{gameId}</span></span>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className='mx-auto max-w-3xl p-4 grid grid-cols-1 gap-4 items-start justify-items-center'>
+        <div className='flex items-center justify-center'>
+          {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color})}
+        </div>
+
+        {/* Round context menu button (FAB on mobile) */}
+        <div className='-mt-2 flex items-center justify-center w-full'>
+          <button
+            aria-label={isPanelOpen ? 'Close panel' : 'Open panel'}
+            aria-expanded={isPanelOpen}
+            className={`btn-secondary rounded-full w-14 h-14 p-0 flex items-center justify-center shadow-lg shadow-black/30 fixed fab z-50 md:static md:z-auto md:shadow-none transition-colors ${isPanelOpen ? 'ring-2 ring-emerald-500/40' : ''}`}
+            onClick={() => setIsPanelOpen((v) => !v)}
+          >
+            {/* simple dots icon */}
+            <svg width='22' height='22' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg' className={`transition-transform ${isPanelOpen ? 'rotate-90' : ''}`}>
+              <circle cx='4' cy='10' r='2' fill='currentColor'/>
+              <circle cx='10' cy='10' r='2' fill='currentColor'/>
+              <circle cx='16' cy='10' r='2' fill='currentColor'/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Collapsible lower panel (animated) */}
+        <div
+          aria-hidden={!isPanelOpen}
+          className={`w-full max-w-[500px] overflow-hidden transition-all duration-300 ease-out ${isPanelOpen ? 'opacity-100 max-h-[900px] translate-y-0' : 'opacity-0 max-h-0 -translate-y-2 pointer-events-none'}`}
+        >
+          <Panel
+            history={history}
+            tableEnd={tableEnd}
+            socket={socket}
+            status={status}
+            color={color}
+            gameId={gameId}
+            isHotSeatMode={isHotSeatMode}
+            hotSeatCurrentPlayer={hotSeatCurrentPlayer}
+            hotSeatGame={hotSeatGame}
+            updateHotSeatPosition={updateHotSeatPosition}
+            serverIp={serverIp}
+            serverPort={serverPort}
+            serverInfo={serverInfo}
+            clientPort={clientPort}
+            isQrOpen={isQrOpen}
+            setIsQrOpen={setIsQrOpen}
+            qrDataUrl={qrDataUrl}
+            setQrDataUrl={setQrDataUrl}
+            qrLoading={qrLoading}
+            setQrLoading={setQrLoading}
+            onRequestReset={() => setResetConfirmOpen(true)}
+            onRequestLeave={() => setLeaveConfirmOpen(true)}
+          />
+        </div>
+      </main>
+
       {/* Promotion Dialog */}
       {promotionRequired && promotionData && (
         <PromotionDialog 
@@ -418,6 +539,34 @@ function App() {
           color={promotionData.color}
           onPromote={handlePromote}
           onCancel={handlePromotionCancel}
+        />
+      )}
+
+      {/* Reset Confirmation Dialog */}
+      {resetConfirmOpen && (
+        <ConfirmDialog
+          title="Reset Game"
+          message={isHotSeatMode
+            ? 'Reset the current game? All progress will be lost.'
+            : 'Reset the current game for both players? All progress will be lost.'}
+          confirmText="Reset"
+          cancelText="Cancel"
+          onConfirm={performReset}
+          onCancel={() => setResetConfirmOpen(false)}
+        />
+      )}
+
+      {/* Leave/New Game Confirmation Dialog */}
+      {leaveConfirmOpen && (
+        <ConfirmDialog
+          title={isHotSeatMode ? 'New Game' : 'Leave Game'}
+          message={isHotSeatMode
+            ? 'Start a new game? Current progress will be lost.'
+            : 'Leave the current room and end your session?'}
+          confirmText={isHotSeatMode ? 'New Game' : 'Leave'}
+          cancelText="Cancel"
+          onConfirm={performLeave}
+          onCancel={() => setLeaveConfirmOpen(false)}
         />
       )}
     </div>
@@ -441,7 +590,7 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
       let textColor = (rowInd + boardInd) % 2 === 0 ? 'text-[#739552]' : 'text-[#EBECD0]'
       let coord = `${numToLetter[rowInd]}${8 - boardInd}`
       boardArr.push(
-        <div onDrop={handleDrop} onDragOver={(e) => { e.preventDefault(); }} className={`relative square flex flex-col ${bgColor} ${textColor}`} data-square={coord} onClick={handleSquareClick}>
+        <div key={coord} onDrop={handleDrop} onDragOver={(e) => { e.preventDefault(); }} className={`relative square flex flex-col ${bgColor} ${textColor}`} data-square={coord} onClick={handleSquareClick}>
           {rowInd === (color === 'white' ? 0 : 7) && <div data-square={coord} className='absolute text-xs font-semibold left-[3%]'>{8 - boardInd}</div>}
           {boardInd === (color === 'white' ? 7 : 0) && <div data-square={coord} className='absolute text-xs font-semibold self-end right-[5%] top-[69%]'>{numToLetter[rowInd]}</div>}
           {square != null ?
@@ -460,7 +609,7 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
   }
 
   return (
-    <div id="board" className='relative grid-rows-8 grid-cols-8 grid grabbable text-black h-[500px] w-[500px]'>
+    <div id="board" className='relative grid-rows-8 grid-cols-8 grid grabbable text-black'>
       {boardArr}
       {isGameOver[0] && <div className='absolute bg-zinc-800 bg-opacity-80 h-full w-full flex items-center justify-center z-40'>
         <div className='font-light text-white text-center text-4xl'>
@@ -514,7 +663,7 @@ function squareUnderlay({ square, coord, history, availableMoves, isCheck, turn,
   )
 }
 
-function controlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition }) {
+function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave }) {
   const handleUndo = () => {
     if (isHotSeatMode && hotSeatGame) {
       hotSeatGame.undo()
@@ -525,121 +674,290 @@ function controlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
   }
 
   const handleReset = () => {
-    if (isHotSeatMode && hotSeatGame) {
-      hotSeatGame.reset()
-      updateHotSeatPosition()
-    } else if (socket) {
-      socket.emit('reset', gameId)
-    }
+    if (onRequestReset) onRequestReset()
   }
 
   const handleLeave = () => {
-    if (isHotSeatMode) {
-      // Reset hot seat game
-      if (hotSeatGame) {
-        hotSeatGame.reset()
-        updateHotSeatPosition()
-      }
-    } else if (socket) {
-      socket.emit('leave', gameId)
-    }
+    if (onRequestLeave) onRequestLeave()
   }
 
   const currentPlayerText = isHotSeatMode ? 
     (hotSeatCurrentPlayer === 'w' ? 'White to move' : 'Black to move') : 
-    'Opponent'
-
-  const youText = isHotSeatMode ? 
-    (hotSeatCurrentPlayer === 'w' ? 'White' : 'Black') : 
-    'You'
+    null
 
   return (
-    <div className='h-[500px] gap-3 w-96 bg-zinc-700 bg-opacity-90 rounded-xl p-3 flex flex-col'>
-      <div>
-        <p>{currentPlayerText}</p>
+    <div className='card p-4 flex flex-col gap-4 md:h-[500px]'>
+      <div className='flex items-center justify-between'>
+        {currentPlayerText && <p className='text-sm text-zinc-300'>{currentPlayerText}</p>}
+        {status === 'waiting' && <span className='badge-warn'>Waiting for opponent</span>}
       </div>
-      <div className='flex flex-col gap-3 grow justify-center'>
-        <div ref={tableEnd} className='h-40 overflow-auto bg-zinc-900 bg-opacity-35 rounded-xl p-2 select-text'>
-          <table className='w-3/5 table-auto'>
+
+      <div className='flex flex-col gap-3 grow'>
+        <div ref={tableEnd} className='h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'>
+          <table className='w-full table-fixed'>
+            <tbody>
             {history.map((move, i) => {
               if (i % 2 === 0) {
                 return (
-                  <tr key={i} className='text-center  font-semibold text-sm'>
-                    <td className='font-normal text-gray-400'>{i / 2 + 1}.</td>
-                    <td>{move.san}</td>
-                    <td>{history[i + 1]?.san}</td>
+                  <tr key={i} className='text-center font-semibold text-sm text-white/90'>
+                    <td className='w-10 font-normal text-gray-400'>{i / 2 + 1}.</td>
+                    <td className='px-2'>{move.san}</td>
+                    <td className='px-2'>{history[i + 1]?.san}</td>
                   </tr>
                 )
               } else {
-                return
+                return null
               }
             })}
+            </tbody>
           </table>
         </div>
+
         <div className='grid grid-cols-2 gap-2'>
-          <button className='' onClick={handleUndo}>
-            Undo
-          </button>
-          <button
-            className='px-2'
-            onClick={handleReset}
-          >Reset Game</button>
+          <button className='btn-secondary' onClick={handleUndo}>Undo</button>
+          <button className='btn-secondary' onClick={handleReset}>Reset Game</button>
         </div>
-        <button
-          className='px-2'
-          onClick={handleLeave}>
+        <button className={isHotSeatMode ? 'btn-primary' : 'btn-danger'} onClick={handleLeave}>
           {isHotSeatMode ? 'New Game' : 'Leave'}
         </button>
-        {status === 'waiting' && <div>
-          <p>Waiting for opponent to connect...</p>
-        </div>}
-        {status === 'ready' && !isHotSeatMode && <div className='text-xs text-gray-500'>
-          <p>Connected to Room: <em className='text-emerald-700'>{gameId}</em></p>
-        </div>}
-        {isHotSeatMode && <div className='text-xs text-gray-500'>
-          <p>Hot Seat Mode - Two players on same device</p>
-        </div>}
+
+        {status === 'ready' && !isHotSeatMode && (
+          <div className='text-xs text-zinc-400'>
+            <p>Connected to Room: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
+          </div>
+        )}
+        {isHotSeatMode && (
+          <div className='text-xs text-zinc-400'>
+            <p>Hot Seat Mode — Two players on same device</p>
+          </div>
+        )}
       </div>
-      <div>
-        <p>{youText}</p>
-      </div>
+
+      {/* bottom section removed per request */}
     </div>
   )
 }
 
-function gameJoinPanel({ socket, status, color, gameId }) {
-  const serverIp = new URLSearchParams(window.location.search).get('server') || 'localhost';
+function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading }) {
+  const ip = (serverInfo && serverInfo.lanIp) ? serverInfo.lanIp : serverIp
+  const protocol = (typeof window !== 'undefined' && window.location && window.location.protocol) || 'http:'
+  const networkName = serverInfo && serverInfo.networkName ? serverInfo.networkName : null
+  const url = ip ? `${protocol}//${ip}:${clientPort}` : null
+  const qrAnchorRef = useRef(null)
+  const [qrPos, setQrPos] = useState({ top: 0, left: 0 })
+
+  // Close QR on outside click or Escape
+  useEffect(() => {
+    if (!isQrOpen) return
+    const onPointer = (e) => {
+      const anchor = qrAnchorRef.current
+      const pop = document.querySelector('[data-qr-popover="1"]')
+      if (anchor && anchor.contains(e.target)) return
+      if (pop && pop.contains(e.target)) return
+      setIsQrOpen(false)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIsQrOpen(false)
+    }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('touchstart', onPointer, { passive: true })
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('touchstart', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [isQrOpen, setIsQrOpen])
+
+  const handleShareClick = async (e) => {
+    e.preventDefault()
+    if (!url) return
+    const showToast = (msg) => {
+      try {
+        const btn = e.currentTarget
+        const existing = btn.parentElement?.querySelector('[data-temp-toast]')
+        if (existing) existing.remove()
+        const toast = document.createElement('span')
+        toast.setAttribute('data-temp-toast', '1')
+        toast.className = 'ml-2 text-xs text-emerald-300 transition-opacity duration-300'
+        toast.style.opacity = '1'
+        toast.textContent = msg
+        btn.insertAdjacentElement('afterend', toast)
+        setTimeout(() => {
+          toast.style.opacity = '0'
+          setTimeout(() => toast.remove(), 300)
+        }, 1300)
+      } catch (_) {}
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Vermouth's Gambit",
+          text: 'Join my game',
+          url: url
+        })
+        showToast('Shared!')
+        return
+      }
+    } catch (_) {}
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url)
+        showToast('Copied!')
+        return
+      }
+    } catch (_) {}
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = url
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'absolute'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      showToast('Copied!')
+    } catch (_) {}
+  }
+
+  const handleQrToggle = async (e) => {
+    e.preventDefault()
+    if (!url) return
+    if (!isQrOpen) {
+      try {
+        // Compute portal position relative to viewport (fixed)
+        if (qrAnchorRef.current) {
+          const r = qrAnchorRef.current.getBoundingClientRect()
+          const popupW = 200 // approx container width
+          const popupH = 200 // approx container height
+          let top = r.top - popupH - 8
+          if (top < 8) top = r.bottom + 8
+          let left = r.right - popupW
+          if (left < 8) left = 8
+          if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8
+          setQrPos({ top, left })
+        }
+        setIsQrOpen(true)
+        setQrLoading(true)
+        if (!qrDataUrl) {
+          let dataUrl = null
+          try {
+            dataUrl = await QRCode.toDataURL(url, {
+              errorCorrectionLevel: 'M',
+              margin: 1,
+              width: 240,
+              color: { dark: '#000000', light: '#0000' } // attempt transparent background
+            })
+          } catch (_) {
+            // Fallback to white background if transparent unsupported
+            dataUrl = await QRCode.toDataURL(url, {
+              errorCorrectionLevel: 'M',
+              margin: 1,
+              width: 240,
+              color: { dark: '#000000', light: '#ffffff' }
+            })
+          }
+          setQrDataUrl(dataUrl)
+        }
+      } catch (_) {
+        // leave silently
+      } finally {
+        setQrLoading(false)
+      }
+    } else {
+      setIsQrOpen(false)
+    }
+  }
 
   return (
-    <div className='h-[500px] gap-3 w-96 bg-zinc-700 bg-opacity-90 rounded-xl p-3 flex flex-col'>
-      <div>
-        <p className='text-center text-white text-2xl font-bold'>Game Lobby</p>
+    <div className='card p-4 flex flex-col gap-4 md:h-[500px]'>
+      <div className='text-center'>
+        <p className='text-white text-xl font-semibold'>Game Lobby</p>
       </div>
-      <div className='text-xs text-gray-300 mb-2'>
-        <p>🔌 Connected to server: {serverIp}</p>
-        <p className='text-yellow-400'>💡 For LAN multiplayer: Both players must use the same server IP</p>
+      <div className='text-xs text-zinc-300 -mt-2 flex flex-col items-center text-center gap-1'>
+        {networkName && (
+        <p>Network: <span className='font-mono text-emerald-400'>{networkName}</span></p>
+        )}
+        <p className='flex items-center justify-center gap-2'>
+          <span>Connect:</span>
+          {url ? (
+            <button
+              type='button'
+              onClick={handleShareClick}
+              className='font-mono text-emerald-400 underline underline-offset-2 hover:opacity-90 active:opacity-80 bg-transparent p-0 border-0 focus:outline-none focus:ring-0'
+              aria-label='Share connect URL'
+              title='Tap to share or copy'
+            >
+              {url}
+            </button>
+          ) : (
+            <span className='font-mono text-emerald-400'>unknown</span>
+          )}
+          {url && (
+            <span className='relative inline-flex items-center' ref={qrAnchorRef}>
+              <button
+                type='button'
+                onClick={handleQrToggle}
+                aria-label={isQrOpen ? 'Hide QR code' : 'Show QR code'}
+                className='inline-flex items-center justify-center ml-1 h-[1.1em] w-[1.1em] p-0 bg-transparent border-0 text-white/90 hover:opacity-90 active:opacity-80'
+                title={isQrOpen ? 'Hide QR code' : 'Show QR code'}
+              >
+                {/* Tiny QR icon */}
+                <svg viewBox='0 0 24 24' width='1em' height='1em' fill='currentColor' aria-hidden='true'>
+                  <rect x='3' y='3' width='7' height='7' rx='1'></rect>
+                  <rect x='14' y='3' width='7' height='7' rx='1'></rect>
+                  <rect x='3' y='14' width='7' height='7' rx='1'></rect>
+                  <path d='M14 14h3v3h-3zM17 17h4v4h-4zM21 14h-2v-2h2zM14 21h-2v-2h2z'></path>
+                </svg>
+              </button>
+              {isQrOpen && createPortal(
+                <div
+                  className='fixed z-[1000]'
+                  style={{ top: qrPos.top, left: qrPos.left }}
+                >
+                  <div
+                    className='rounded-lg border border-white/10 bg-zinc-900/95 p-2 shadow-xl backdrop-blur'
+                    data-qr-popover='1'
+                    role='dialog'
+                    aria-label='Connect QR code'
+                  >
+                    {qrLoading ? (
+                      <span className='text-xs text-zinc-200'>Generating…</span>
+                    ) : (
+                      <img src={qrDataUrl || ''} alt='Connect QR code' className='w-48 h-48' />
+                    )}
+                  </div>
+                </div>,
+                document.body
+              )}
+            </span>
+          )}
+        </p>
       </div>
-      <div className='flex gap-2 text-sm'>
-        <input required id="roomInput" className='grow py-1 px-2 rounded-lg' type='text' placeholder='Join or create a room by entering a code' />
-        <button
-          className='px-2'
-          onClick={() => {
-            if(!document.getElementById('roomInput').reportValidity()) {
-              return
-            }
-            socket.emit('join', document.getElementById('roomInput').value)
-          }}>
-          Join
-        </button>
-        <button
-          className='px-2 hidden'
-          onClick={() => {
-            socket.emit('leave', gameId)
-          }}>
-          Leave
-        </button>
+      <div className='flex flex-col gap-2 text-sm'>
+        <input required id="roomInput" className='input' type='text' inputMode='text' placeholder='Room code' />
+        <input id="playerNameInput" className='input' type='text' inputMode='text' placeholder="Player name (optional)" />
+        <div className='flex gap-2'>
+          <button
+            className='btn-primary grow'
+            onClick={() => {
+              const roomEl = document.getElementById('roomInput')
+              if (!roomEl || !roomEl.reportValidity()) return
+              socket.emit('join', roomEl.value)
+            }}>
+            Join
+          </button>
+          <button
+            className='btn-danger hidden'
+            onClick={() => {
+              socket.emit('leave', gameId)
+            }}>
+            Leave
+          </button>
+        </div>
       </div>
-      <div className='hidden'>
+      <div className='hidden text-xs text-zinc-400'>
         <p>Color: {color}</p>
         <p>Status: {status}</p>
         <p>Game: {gameId}</p>
@@ -649,22 +967,42 @@ function gameJoinPanel({ socket, status, color, gameId }) {
 }
 
 //render the correct panel based on the game status
-function panel({ history, tableEnd, socket, status, color, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition }) {
+function Panel({ history, tableEnd, socket, status, color, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave }) {
   //note tableEnd is a ref, i didnt want to rename it cuz id have to refactor :)
   if ((status === 'lobby' || status === 'fail') && !isHotSeatMode) {
-    return (gameJoinPanel({ socket: socket, status: status, color: color, gameId: gameId }))
+    return (
+      <GameJoinPanel 
+        socket={socket}
+        status={status}
+        color={color}
+        gameId={gameId}
+        serverIp={serverIp}
+        serverInfo={serverInfo}
+        clientPort={clientPort}
+        isQrOpen={isQrOpen}
+        setIsQrOpen={setIsQrOpen}
+        qrDataUrl={qrDataUrl}
+        setQrDataUrl={setQrDataUrl}
+        qrLoading={qrLoading}
+        setQrLoading={setQrLoading}
+      />
+    )
   } else {
-    return (controlPanel({ 
-      history: history, 
-      tableEnd: tableEnd, 
-      socket: socket, 
-      status: status, 
-      gameId: gameId,
-      isHotSeatMode: isHotSeatMode,
-      hotSeatCurrentPlayer: hotSeatCurrentPlayer,
-      hotSeatGame: hotSeatGame,
-      updateHotSeatPosition: updateHotSeatPosition
-    }))
+    return (
+      <ControlPanel
+        history={history}
+        tableEnd={tableEnd}
+        socket={socket}
+        status={status}
+        gameId={gameId}
+        isHotSeatMode={isHotSeatMode}
+        hotSeatCurrentPlayer={hotSeatCurrentPlayer}
+        hotSeatGame={hotSeatGame}
+        updateHotSeatPosition={updateHotSeatPosition}
+        onRequestReset={onRequestReset}
+        onRequestLeave={onRequestLeave}
+      />
+    )
   }
 }
 

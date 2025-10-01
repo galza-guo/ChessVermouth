@@ -119,7 +119,14 @@ install_dependencies() {
     
     # Install client dependencies  
     print_status "Installing client dependencies..."
-    cd client && npm install && cd ..
+    cd client && npm install
+    
+    # Ensure QR code dependency is installed (used by the client UI)
+    if ! npm ls qrcode >/dev/null 2>&1; then
+        print_status "Adding QR code generator (qrcode) dependency..."
+        npm install qrcode@^1.5.3 --save
+    fi
+    cd ..
     
     print_success "All dependencies installed!"
     
