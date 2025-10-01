@@ -709,6 +709,13 @@ function squareUnderlay({ square, coord, history, availableMoves, isCheck, turn,
 }
 
 function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave }) {
+  // Auto-scroll the move list to the latest move
+  useEffect(() => {
+    const el = tableEnd && tableEnd.current
+    if (el) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [history, tableEnd])
   const handleUndo = () => {
     if (isHotSeatMode && hotSeatGame) {
       hotSeatGame.undo()
@@ -738,24 +745,33 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
       </div>
 
       <div className='flex flex-col gap-3 grow'>
-        <div ref={tableEnd} className='h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'>
-          <table className='w-full table-fixed'>
-            <tbody>
-            {history.map((move, i) => {
-              if (i % 2 === 0) {
-                return (
-                  <tr key={i} className='text-center font-semibold text-sm text-white/90'>
-                    <td className='w-10 font-normal text-gray-400'>{i / 2 + 1}.</td>
-                    <td className='px-2'>{move.san}</td>
-                    <td className='px-2'>{history[i + 1]?.san}</td>
-                  </tr>
-                )
-              } else {
-                return null
-              }
-            })}
-            </tbody>
-          </table>
+        <div
+          ref={tableEnd}
+          role='region'
+          aria-label='Move List'
+          className='h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'
+        >
+          {history.length === 0 ? (
+            <div className='text-xs text-zinc-400'>No moves yet</div>
+          ) : (
+            <table className='w-full table-fixed'>
+              <tbody>
+              {history.map((move, i) => {
+                if (i % 2 === 0) {
+                  return (
+                    <tr key={i} className='text-center font-semibold text-sm text-white/90'>
+                      <td className='w-10 font-normal text-gray-400'>{i / 2 + 1}.</td>
+                      <td className='px-2'>{move.san}</td>
+                      <td className='px-2'>{history[i + 1]?.san}</td>
+                    </tr>
+                  )
+                } else {
+                  return null
+                }
+              })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <div className='grid grid-cols-2 gap-2'>
