@@ -744,9 +744,78 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
         {status === 'waiting' && <span className='badge-warn'>Waiting for opponent</span>}
       </div>
 
-      <div className='flex flex-col gap-3 grow'>
-        <div
-          ref={tableEnd}
+      <div className='flex gap-4 grow items-stretch'>
+        {/* Left: vertical icon-only actions */}
+        <div className='flex flex-col items-center gap-2 pr-1 flex-shrink-0'>
+          {/* Undo */}
+          <div className='relative group'>
+            <button
+              type='button'
+              aria-label='Undo'
+              className='neo-btn'
+              onClick={handleUndo}
+            >
+              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
+                <path d='M9 14L4 9l5-5' />
+                <path d='M20 20a8 8 0 0 0-8-8H4' />
+              </svg>
+            </button>
+            <span
+              role='tooltip'
+              aria-hidden='true'
+              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+            >Undo</span>
+          </div>
+
+          {/* Reset */}
+          <div className='relative group'>
+            <button
+              type='button'
+              aria-label='Reset Game'
+              className='neo-btn'
+              onClick={handleReset}
+            >
+              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
+                <path d='M21 12a9 9 0 1 1-9-9' />
+                <path d='M3 3v6h6' />
+              </svg>
+            </button>
+            <span
+              role='tooltip'
+              aria-hidden='true'
+              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+            >Reset</span>
+          </div>
+
+          {/* Leave/New Game */}
+          <div className='relative group'>
+            <button
+              type='button'
+              aria-label={isHotSeatMode ? 'New Game' : 'Leave Game'}
+              className='neo-btn'
+              onClick={handleLeave}
+            >
+              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
+                <path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' />
+                <path d='M16 17l5-5-5-5' />
+                <path d='M21 12H9' />
+              </svg>
+            </button>
+            <span
+              role='tooltip'
+              aria-hidden='true'
+              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+            >{isHotSeatMode ? 'New Game' : 'Leave'}</span>
+          </div>
+
+          {/* Reserve space for ~3 future buttons */}
+          <div className='h-16 md:h-24' aria-hidden='true'></div>
+        </div>
+
+        {/* Right: Move List */}
+        <div className='flex flex-col gap-3 grow min-w-0'>
+          <div
+            ref={tableEnd}
           role='region'
           aria-label='Move List'
           className='h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'
@@ -772,23 +841,24 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
               </tbody>
             </table>
           )}
-        </div>
-
-        <div className='grid grid-cols-2 gap-2'>
-          <button className='btn-secondary' onClick={handleUndo}>Undo</button>
-          <button className='btn-secondary' onClick={handleReset}>Reset Game</button>
-        </div>
-        <button className={isHotSeatMode ? 'btn-primary' : 'btn-danger'} onClick={handleLeave}>
-          {isHotSeatMode ? 'New Game' : 'Leave'}
-        </button>
-
-        {status === 'ready' && !isHotSeatMode && (
-          <div className='text-xs text-zinc-400'>
-            <p>Connected to Room: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
           </div>
-        )}
+          {status === 'ready' && !isHotSeatMode && (
+            <div className='text-xs text-zinc-400'>
+              <p>Connected to Room: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
+            </div>
+          )}
+          {isHotSeatMode && (
+            <div className='text-xs text-zinc-400'>
+              <p>Hot Seat Mode — Two players on same device</p>
+            </div>
+          )}
+        </div>
+
+        
+
+        
         {isHotSeatMode && (
-          <div className='text-xs text-zinc-400'>
+          <div className='hidden text-xs text-zinc-400'>
             <p>Hot Seat Mode — Two players on same device</p>
           </div>
         )}

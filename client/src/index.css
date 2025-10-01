@@ -120,6 +120,29 @@ button {
   .badge-ok {
     @apply badge border-emerald-500/30 bg-emerald-500/10 text-emerald-300;
   }
+
+  /* Neumorphic round icon button */
+  .neo-btn {
+    @apply inline-flex items-center justify-center rounded-full text-white transition-all duration-150 select-none;
+    width: 44px;
+    height: 44px;
+    background: #121214;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+      6px 6px 12px rgba(0, 0, 0, 0.55),
+      -6px -6px 12px rgba(255, 255, 255, 0.04);
+  }
+  .neo-btn:hover {
+    box-shadow:
+      4px 4px 10px rgba(0, 0, 0, 0.5),
+      -4px -4px 10px rgba(255, 255, 255, 0.06);
+  }
+  .neo-btn:active {
+    box-shadow:
+      inset 3px 3px 6px rgba(0, 0, 0, 0.6),
+      inset -3px -3px 6px rgba(255, 255, 255, 0.06);
+    transform: translateY(0.5px);
+  }
 }
 
 /* Hide scrollbars across platforms (keeps scrolling) */
