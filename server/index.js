@@ -155,12 +155,43 @@ const games = {}
 const rooms = {}
 
 io.on('connection', (socket) => {
-  socket.on('join', (gameId) => {
+  // Utility: generate a random session id
+  const genId = () => {
+    let id = ''
+    do {
+      id = Math.random().toString(36).slice(2, 8).toUpperCase()
+    } while (games[id])
+    return id
+  }
+
+  // Utility: find the first waiting game (hosted, 1 player)
+  const findWaitingGameId = () => {
+    for (const [gid, g] of Object.entries(games)) {
+      if (g && g.status === 'waiting' && g.numPlayers === 1 && g.players && g.players.host) {
+        return gid
+      }
+    }
+    return null
+  }
+
+  socket.on('join', (providedId) => {
+    let gameId = (typeof providedId === 'string' && providedId.trim()) ? providedId.trim() : ''
+
+    // If no id provided, auto-match: join a waiting game or create a new one
+    if (!gameId) {
+      const waiting = findWaitingGameId()
+      if (waiting) {
+        gameId = waiting
+      } else {
+        gameId = genId()
+      }
+    }
+
     if(!games[gameId]) {
+      // Create a new game and wait for opponent
       socket.join(gameId)
       rooms[socket.id] = gameId
       socket.emit('gameId', gameId)
-      //create new game
       games[gameId] = {
         game: new Chess(),
         numPlayers: 1,
@@ -171,25 +202,22 @@ io.on('connection', (socket) => {
         status: 'waiting',
         pendingPromotion: null
       }
-      //assign color
       socket.emit('color', 'white')
-      //send status to room
       io.to(gameId).emit('status','waiting')
       sendPosition(io.to(gameId), gameId)
     } else if(games[gameId]['numPlayers'] === 1){
+      // Join existing waiting game
       socket.join(gameId)
       rooms[socket.id] = gameId
       socket.emit('gameId', gameId)
-      //join existing game
       games[gameId]['numPlayers'] = 2
       games[gameId]['players']['opponent'] = socket.id
       socket.emit('color', 'black')
       games[gameId].status = 'ready'
-      //send status to room
       io.to(gameId).emit('status', 'ready')
-      //start the game
       sendPosition(io.to(gameId), gameId)
     } else {
+      // Game full
       socket.emit('status', 'fail')
     }
   })

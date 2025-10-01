@@ -1318,20 +1318,18 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
         </p>
       </div>
       <div className='flex flex-col gap-2 text-sm'>
-        <input required id="roomInput" className='input' type='text' inputMode='text' placeholder='Room code' />
         <input id="playerNameInput" className='input' type='text' inputMode='text' placeholder="Player name (optional)" />
         <div className='flex gap-2'>
           <button
             className='btn-primary grow'
             onClick={() => {
-              const roomEl = document.getElementById('roomInput')
-              if (!roomEl || !roomEl.reportValidity()) return
+              if (!socket) return
               try {
                 const nameEl = document.getElementById('playerNameInput')
                 const val = nameEl && typeof nameEl.value === 'string' ? nameEl.value.trim() : ''
                 if (val && setPlayerName) setPlayerName(val)
               } catch (_) {}
-              socket.emit('join', roomEl.value)
+              socket.emit('join')
             }}>
             Join
           </button>
