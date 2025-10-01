@@ -101,6 +101,11 @@ function App() {
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   // Leave/New Game confirmation dialog
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false)
+  // Clock reset signal (increments on new game/reset)
+  const [clockResetNonce, setClockResetNonce] = useState(0)
+  // Optional player names (for labels)
+  const [playerName, setPlayerName] = useState('')
+  const [opponentName, setOpponentName] = useState('')
   // When a confirmation dialog opens, collapse the floating control panel
   useEffect(() => {
     if (resetConfirmOpen || leaveConfirmOpen) {
@@ -114,6 +119,7 @@ function App() {
     } else if (socket) {
       socket.emit('reset', gameId)
     }
+    setClockResetNonce((n) => n + 1)
     setResetConfirmOpen(false)
   }
   const performLeave = () => {
@@ -125,6 +131,7 @@ function App() {
     } else if (socket) {
       socket.emit('leave', gameId)
     }
+    setClockResetNonce((n) => n + 1)
     setLeaveConfirmOpen(false)
   }
 
@@ -227,6 +234,7 @@ function App() {
         setColor('')
         setPromotionRequired(false)
         setPromotionData(null)
+        setClockResetNonce((n) => n + 1)
       }
 
       const handlePromotionRequired = (data) => {
@@ -529,6 +537,7 @@ function App() {
                 setQrDataUrl={setQrDataUrl}
                 qrLoading={qrLoading}
                 setQrLoading={setQrLoading}
+                setPlayerName={setPlayerName}
               />
             </div>
           </div>
@@ -562,7 +571,12 @@ function App() {
             socket={socket}
             status={status}
             color={color}
+            turn={turn}
+            isGameOver={isGameOver}
             gameId={gameId}
+            clockResetNonce={clockResetNonce}
+            playerName={playerName}
+            opponentName={opponentName}
             isHotSeatMode={isHotSeatMode}
             hotSeatCurrentPlayer={hotSeatCurrentPlayer}
             hotSeatGame={hotSeatGame}
@@ -714,7 +728,121 @@ function squareUnderlay({ square, coord, history, availableMoves, isCheck, turn,
   )
 }
 
-function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave }) {
+// Chess clock hook (count-up, switch on turn change)
+function useChessClock({
+  isPlaying,           // boolean: game running (status ready, not game over)
+  activeTurn,          // 'w' | 'b' | '' — whose turn from game state
+  resetKey,            // string/number changes when a new game starts
+}) {
+  const [whiteMsBase, setWhiteMsBase] = useState(0)
+  const [blackMsBase, setBlackMsBase] = useState(0)
+  const runningRef = useRef(null) // 'w' | 'b' | null
+  const lastStartRef = useRef(null) // timestamp in ms
+  const [now, setNow] = useState(() => Date.now())
+
+  // Reset when a new session starts
+  useEffect(() => {
+    setWhiteMsBase(0)
+    setBlackMsBase(0)
+    runningRef.current = null
+    lastStartRef.current = null
+  }, [resetKey])
+
+  // Start/stop/switch on activeTurn or play state changes
+  useEffect(() => {
+    const current = runningRef.current
+    const t = (activeTurn === 'w' || activeTurn === 'b') ? activeTurn : null
+
+    if (!isPlaying || t == null) {
+      // Stop if not playing
+      if (current && lastStartRef.current != null) {
+        const elapsed = Date.now() - lastStartRef.current
+        if (current === 'w') setWhiteMsBase((v) => v + elapsed)
+        if (current === 'b') setBlackMsBase((v) => v + elapsed)
+      }
+      runningRef.current = null
+      lastStartRef.current = null
+      return
+    }
+
+    // If switching sides, commit elapsed and flip
+    if (current !== t) {
+      const nowTs = Date.now()
+      if (current && lastStartRef.current != null) {
+        const elapsed = nowTs - lastStartRef.current
+        if (current === 'w') setWhiteMsBase((v) => v + elapsed)
+        if (current === 'b') setBlackMsBase((v) => v + elapsed)
+      }
+      runningRef.current = t
+      lastStartRef.current = nowTs
+    }
+  }, [isPlaying, activeTurn])
+
+  // Tick at ~4Hz for smooth-enough updates without cost, derive display from base + delta
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250)
+    return () => clearInterval(id)
+  }, [])
+
+  const whiteMs = useMemo(() => {
+    if (runningRef.current === 'w' && lastStartRef.current != null) {
+      return whiteMsBase + (now - lastStartRef.current)
+    }
+    return whiteMsBase
+  }, [whiteMsBase, now])
+  const blackMs = useMemo(() => {
+    if (runningRef.current === 'b' && lastStartRef.current != null) {
+      return blackMsBase + (now - lastStartRef.current)
+    }
+    return blackMsBase
+  }, [blackMsBase, now])
+
+  // Manual click switch for dev/testing
+  const clickSwitchTo = useCallback((side) => {
+    if (side !== 'w' && side !== 'b') return
+    if (!isPlaying) return
+    const current = runningRef.current
+    const nowTs = Date.now()
+    if (current && lastStartRef.current != null) {
+      const elapsed = nowTs - lastStartRef.current
+      if (current === 'w') setWhiteMsBase((v) => v + elapsed)
+      if (current === 'b') setBlackMsBase((v) => v + elapsed)
+    }
+    runningRef.current = side
+    lastStartRef.current = nowTs
+  }, [isPlaying])
+
+  return { whiteMs, blackMs, clickSwitchTo }
+}
+
+function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      className={`group w-full rounded-lg border border-white/10 backdrop-blur px-3 py-2 text-sm text-white/90 transition-all ${active ? 'bg-white/10 shadow-[0_6px_16px_rgba(0,0,0,0.35)] ring-2 ring-emerald-400/40' : 'bg-white/5 shadow-inner'}`}
+      aria-pressed={active}
+    >
+      <div className='flex items-center justify-between'>
+        <span className={`text-[11px] uppercase tracking-wide ${active ? 'text-emerald-300' : 'text-zinc-300'}`}>{label}</span>
+        <div style={{ fontVariantNumeric: 'tabular-nums' }} className='font-semibold'>
+          {easterEgg ? (
+            <span className='text-emerald-300'>長考之王</span>
+          ) : (
+            // Fixed-width grid: 2ch for minutes, 1ch for colon, 2ch for seconds (no zero-pad)
+            <span className='inline-grid' style={{ gridTemplateColumns: '2ch 1ch 2ch' }}>
+              <span className='justify-self-end'>{minutes}</span>
+              <span className='px-0.5'>:</span>
+              <span className='justify-self-start'>{String(seconds).padStart(2, '0')}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName }) {
   // Auto-scroll the move list to the latest move
   useEffect(() => {
     const el = tableEnd && tableEnd.current
@@ -742,6 +870,67 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
   const currentPlayerText = isHotSeatMode ? 
     (hotSeatCurrentPlayer === 'w' ? 'White to move' : 'Black to move') : 
     null
+
+  // Clock logic
+  const playing = status === 'ready' && !(isGameOver && isGameOver[0])
+  const activeTurn = isHotSeatMode ? (hotSeatCurrentPlayer || '') : (turn || '')
+  const resetKey = isHotSeatMode ? `hs-${clockResetNonce}` : `net-${gameId || 'none'}-${clockResetNonce}`
+
+  const { whiteMs, blackMs, clickSwitchTo } = useChessClock({
+    isPlaying: playing,
+    activeTurn,
+    resetKey,
+  })
+
+  const msToParts = useCallback((ms) => {
+    const total = Math.max(0, Math.floor(ms / 1000))
+    const m = Math.floor(total / 60)
+    const s = total % 60
+    return { m, s }
+  }, [])
+
+  // Determine which color is bottom (player) and top (opponent)
+  const bottomColor = isHotSeatMode
+    ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black')
+    : (color || 'white')
+  const topColor = bottomColor === 'white' ? 'black' : 'white'
+
+  const whiteParts = msToParts(whiteMs)
+  const blackParts = msToParts(blackMs)
+  const limitExceeded = (p) => (p.m > 99 || (p.m === 99 && p.s > 59))
+  const whiteEgg = limitExceeded(whiteParts)
+  const blackEgg = limitExceeded(blackParts)
+
+  // Active highlighting by current turn if playing
+  const activeColor = playing
+    ? ((activeTurn === 'w') ? 'white' : (activeTurn === 'b' ? 'black' : null))
+    : null
+
+  // Click handlers to allow manual switching (dev/testing)
+  const handleClickTop = () => {
+    clickSwitchTo(topColor === 'white' ? 'w' : 'b')
+  }
+  const handleClickBottom = () => {
+    clickSwitchTo(bottomColor === 'white' ? 'w' : 'b')
+  }
+
+  const renderTimer = (which) => {
+    const isWhite = which === 'white'
+    const parts = isWhite ? whiteParts : blackParts
+    const egg = isWhite ? whiteEgg : blackEgg
+    const topLabel = (opponentName && opponentName.trim()) ? opponentName.trim() : 'Opp'
+    const bottomLabel = (playerName && playerName.trim()) ? playerName.trim() : 'You'
+    return (
+      <TimerDisplay
+        label={which === topColor ? topLabel : bottomLabel}
+        minutes={parts.m}
+        seconds={parts.s}
+        active={activeColor === which}
+        onClick={which === topColor ? handleClickTop : handleClickBottom}
+        easterEgg={egg}
+      />
+    )
+  }
 
   return (
     <div className='glass-panel p-4 flex flex-col gap-4 md:h-[500px]'>
@@ -904,14 +1093,10 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
           )}
         </div>
 
-        {/* Right: placeholders for clocks */}
+        {/* Right: clocks (top = opponent, bottom = you) */}
         <div className='flex flex-col gap-3 w-44 md:w-56 shrink-0'>
-          <div className='rounded-lg border border-white/10 bg-white/5 backdrop-blur px-3 py-2 text-sm text-white/90'>
-            Opponent's time
-          </div>
-          <div className='rounded-lg border border-white/10 bg-white/5 backdrop-blur px-3 py-2 text-sm text-white/90'>
-            Player's own time
-          </div>
+          {renderTimer(topColor)}
+          {renderTimer(bottomColor)}
         </div>
 
         
@@ -929,7 +1114,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
   )
 }
 
-function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading }) {
+function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, setPlayerName }) {
   const ip = (serverInfo && serverInfo.lanIp) ? serverInfo.lanIp : serverIp
   const protocol = (typeof window !== 'undefined' && window.location && window.location.protocol) || 'http:'
   const networkName = serverInfo && serverInfo.networkName ? serverInfo.networkName : null
@@ -1141,6 +1326,11 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
             onClick={() => {
               const roomEl = document.getElementById('roomInput')
               if (!roomEl || !roomEl.reportValidity()) return
+              try {
+                const nameEl = document.getElementById('playerNameInput')
+                const val = nameEl && typeof nameEl.value === 'string' ? nameEl.value.trim() : ''
+                if (val && setPlayerName) setPlayerName(val)
+              } catch (_) {}
               socket.emit('join', roomEl.value)
             }}>
             Join
@@ -1164,7 +1354,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 }
 
 //render the correct panel based on the game status
-function Panel({ history, tableEnd, socket, status, color, gameId, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave }) {
+function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave }) {
   // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
   return (
     <ControlPanel
@@ -1172,7 +1362,13 @@ function Panel({ history, tableEnd, socket, status, color, gameId, isHotSeatMode
       tableEnd={tableEnd}
       socket={socket}
       status={status}
+      turn={turn}
+      color={color}
+      isGameOver={isGameOver}
       gameId={gameId}
+      clockResetNonce={clockResetNonce}
+      playerName={playerName}
+      opponentName={opponentName}
       isHotSeatMode={isHotSeatMode}
       hotSeatCurrentPlayer={hotSeatCurrentPlayer}
       hotSeatGame={hotSeatGame}
