@@ -506,7 +506,7 @@ function App() {
           <div className='flex items-center gap-3 text-xs text-zinc-400'>
             {turn && <span>Turn: <span className='text-emerald-400 font-medium'>{turn === 'w' ? 'White' : 'Black'}</span></span>}
             {!isHotSeatMode && gameId && status === 'ready' && (
-              <span>Room: <span className='font-mono text-emerald-400'>{gameId}</span></span>
+              <span>Session: <span className='font-mono text-emerald-400'>{gameId}</span></span>
             )}
           </div>
         </div>
@@ -627,7 +627,7 @@ function App() {
           title={isHotSeatMode ? 'New Game' : 'Leave Game'}
           message={isHotSeatMode
             ? 'Start a new game? Current progress will be lost.'
-            : 'Leave the current room and end your session?'}
+            : 'Leave the current session and end this game?'}
           confirmText={isHotSeatMode ? 'New Game' : 'Leave'}
           cancelText="Cancel"
           onConfirm={performLeave}
@@ -1083,7 +1083,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
           </div>
           {status === 'ready' && !isHotSeatMode && (
             <div className='text-xs text-zinc-400'>
-              <p>Connected to Room: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
+              <p>Connected to Session: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
             </div>
           )}
           {isHotSeatMode && (
@@ -1121,6 +1121,40 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
   const url = ip ? `${protocol}//${ip}:${clientPort}` : null
   const qrAnchorRef = useRef(null)
   const [qrPos, setQrPos] = useState({ top: 0, left: 0 })
+  const isHome = ((import.meta.env.VITE_HOME || '').trim() === 'G&V')
+  const [claimed, setClaimed] = useState({ Gallant: false, Vermouth: false })
+
+  // Listen for name claim updates from server to disable taken quick-join buttons
+  useEffect(() => {
+    if (!socket) return
+    const onClaims = (payload) => {
+      try {
+        if (payload && payload.claimed) {
+          setClaimed((prev) => ({ ...prev, ...payload.claimed }))
+        }
+      } catch (_) {}
+    }
+    socket.on('nameClaims', onClaims)
+    return () => {
+      socket.off('nameClaims', onClaims)
+    }
+  }, [socket])
+
+  const quickJoin = (name) => {
+    if (!socket) return
+    try {
+      if (setPlayerName) setPlayerName(name)
+      // Optimistically mark as claimed locally
+      setClaimed((prev) => ({ ...prev, [name]: true }))
+      // Wait for server to assign a game and then claim the name server-side
+      const onceGameId = (gid) => {
+        try { socket.emit('claimName', name) } catch (_) {}
+        socket.off('gameId', onceGameId)
+      }
+      socket.on('gameId', onceGameId)
+      socket.emit('join')
+    } catch (_) {}
+  }
 
   // Close QR on outside click or Escape
   useEffect(() => {
@@ -1318,29 +1352,50 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
         </p>
       </div>
       <div className='flex flex-col gap-2 text-sm'>
-        <input id="playerNameInput" className='input' type='text' inputMode='text' placeholder="Player name (optional)" />
-        <div className='flex gap-2'>
-          <button
-            className='btn-primary grow'
-            onClick={() => {
-              if (!socket) return
-              try {
-                const nameEl = document.getElementById('playerNameInput')
-                const val = nameEl && typeof nameEl.value === 'string' ? nameEl.value.trim() : ''
-                if (val && setPlayerName) setPlayerName(val)
-              } catch (_) {}
-              socket.emit('join')
-            }}>
-            Join
-          </button>
-          <button
-            className='btn-danger hidden'
-            onClick={() => {
-              socket.emit('leave', gameId)
-            }}>
-            Leave
-          </button>
-        </div>
+        {isHome ? (
+          <div className='flex gap-2'>
+            <button
+              className='btn-primary grow disabled:opacity-50 disabled:cursor-not-allowed'
+              disabled={!!claimed.Gallant}
+              onClick={() => quickJoin('Gallant')}
+            >
+              I'm G
+            </button>
+            <button
+              className='btn-primary grow disabled:opacity-50 disabled:cursor-not-allowed'
+              disabled={!!claimed.Vermouth}
+              onClick={() => quickJoin('Vermouth')}
+            >
+              I'm V
+            </button>
+          </div>
+        ) : (
+          <>
+            <input id="playerNameInput" className='input' type='text' inputMode='text' placeholder="Player name (optional)" />
+            <div className='flex gap-2'>
+              <button
+                className='btn-primary grow'
+                onClick={() => {
+                  if (!socket) return
+                  try {
+                    const nameEl = document.getElementById('playerNameInput')
+                    const val = nameEl && typeof nameEl.value === 'string' ? nameEl.value.trim() : ''
+                    if (val && setPlayerName) setPlayerName(val)
+                  } catch (_) {}
+                  socket.emit('join')
+                }}>
+                Join
+              </button>
+              <button
+                className='btn-danger hidden'
+                onClick={() => {
+                  socket.emit('leave', gameId)
+                }}>
+                Leave
+              </button>
+            </div>
+          </>
+        )}
       </div>
       <div className='hidden text-xs text-zinc-400'>
         <p>Color: {color}</p>

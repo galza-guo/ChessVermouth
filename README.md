@@ -13,7 +13,7 @@ To run:
 3. LAN multiplayer options:
    - Option A (host serves UI to others): on the other player’s device, open `http://<HOST_LAN_IP>:5173/?server=<HOST_LAN_IP>` in the browser.
    - Option B (each runs their own client): on the other player’s device, clone the repo, run the client (`npm run dev` in `/client`), and open `http://localhost:5173/?server=<HOST_LAN_IP>`.
-4. Both players open the lobby and click Join; the server will auto-pair the first two joiners into a game (no room code needed).
+4. Both players open the lobby and click Join; the server will auto-pair the first two joiners into a game (no session code needed).
 
 Notes:
 - The dev server is now bound to the LAN automatically, so other devices can reach the client UI.

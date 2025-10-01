@@ -152,7 +152,7 @@ const sendPosition = (emitter, gameId) => {
 }
 
 const games = {}
-const rooms = {}
+const sessions = {}
 
 io.on('connection', (socket) => {
   // Utility: generate a random session id
@@ -174,6 +174,15 @@ io.on('connection', (socket) => {
     return null
   }
 
+  // On fresh connection, let clients know which names are currently claimed
+  // for the first waiting game (best-effort; typical setup has a single session).
+  const emitCurrentClaimsTo = (sock) => {
+    const waiting = findWaitingGameId()
+    if (waiting && games[waiting] && games[waiting].claimedNames) {
+      sock.emit('nameClaims', { claimed: games[waiting].claimedNames })
+    }
+  }
+
   socket.on('join', (providedId) => {
     let gameId = (typeof providedId === 'string' && providedId.trim()) ? providedId.trim() : ''
 
@@ -190,7 +199,7 @@ io.on('connection', (socket) => {
     if(!games[gameId]) {
       // Create a new game and wait for opponent
       socket.join(gameId)
-      rooms[socket.id] = gameId
+      sessions[socket.id] = gameId
       socket.emit('gameId', gameId)
       games[gameId] = {
         game: new Chess(),
@@ -200,6 +209,8 @@ io.on('connection', (socket) => {
           opponent: ''
         },
         status: 'waiting',
+        // Track claimed quick-join names (Gallant/Vermouth) for lobby UX
+        claimedNames: { Gallant: false, Vermouth: false },
         pendingPromotion: null
       }
       socket.emit('color', 'white')
@@ -208,7 +219,7 @@ io.on('connection', (socket) => {
     } else if(games[gameId]['numPlayers'] === 1){
       // Join existing waiting game
       socket.join(gameId)
-      rooms[socket.id] = gameId
+      sessions[socket.id] = gameId
       socket.emit('gameId', gameId)
       games[gameId]['numPlayers'] = 2
       games[gameId]['players']['opponent'] = socket.id
@@ -219,6 +230,24 @@ io.on('connection', (socket) => {
     } else {
       // Game full
       socket.emit('status', 'fail')
+    }
+  })
+
+  // Player claims a display name for quick-join (Gallant or Vermouth)
+  socket.on('claimName', (name) => {
+    try {
+      const gameId = sessions[socket.id]
+      if (!gameId || !games[gameId]) return
+      if (!games[gameId].claimedNames) {
+        games[gameId].claimedNames = { Gallant: false, Vermouth: false }
+      }
+      if (name === 'Gallant' || name === 'Vermouth') {
+        games[gameId].claimedNames[name] = true
+        // Broadcast globally so lobby clients (not in room) can update
+        io.emit('nameClaims', { claimed: games[gameId].claimedNames })
+      }
+    } catch (_) {
+      // ignore
     }
   })
 
@@ -320,7 +349,7 @@ io.on('connection', (socket) => {
       io.in(gameId).fetchSockets().then((sockets) => {
         for(let socket of sockets) {
           socket.leave(gameId)
-          delete rooms[socket.id]
+          delete sessions[socket.id]
           socket.emit('terminate')
         }
       })
@@ -331,25 +360,25 @@ io.on('connection', (socket) => {
       games[gameId]['players']['opponent'] = ''
       games[gameId]['status'] = 'waiting'
       io.to(gameId).emit('status', 'waiting')
-      delete rooms[socket.id]
+      delete sessions[socket.id]
       socket.leave(gameId)
       socket.emit('terminate')
     }
   })
 
   socket.on('disconnect', () => {
-    //check if socket is in a room
+    //check if socket is in a session
     let gameId = ''
-    if(rooms[socket.id]) {
-      gameId = rooms[socket.id]
+    if(sessions[socket.id]) {
+      gameId = sessions[socket.id]
     }
 
-    //if socket is in a room
+    //if socket is in a session
     if(gameId !== '' && gameId) {
       console.log('gg', gameId)
       //if socket is a host
       if(games[gameId].players.host === socket.id) {
-        //leave room and terminate the game
+        //leave session and terminate the game
         io.to(gameId).emit('terminate')
         io.in(gameId).fetchSockets().then((sockets) => {
           for(let socket of sockets) {
@@ -367,6 +396,9 @@ io.on('connection', (socket) => {
       }
     }
   })
+
+  // Send any existing claimed names for a waiting game to the newly connected client
+  emitCurrentClaimsTo(socket)
 })
 
 app.get('/moves', (req, res) => {
