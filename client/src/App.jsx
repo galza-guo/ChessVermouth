@@ -545,10 +545,10 @@ function App() {
           </button>
         </div>
 
-        {/* Collapsible lower panel (animated) */}
+        {/* Floating Control Panel (animated) */}
         <div
           aria-hidden={!isPanelOpen}
-          className={`w-full max-w-[500px] overflow-hidden transition-all duration-300 ease-out ${isPanelOpen ? 'opacity-100 max-h-[900px] translate-y-0' : 'opacity-0 max-h-0 -translate-y-2 pointer-events-none'}`}
+          className={`z-[1200] transition-all duration-300 ease-out ${isPanelOpen ? 'opacity-100 translate-y-0' : 'opacity-0 pointer-events-none translate-y-2'} fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-[calc(1.25rem+env(safe-area-inset-right,0px)+3.5rem+1rem)] w-[min(92vw,520px)] md:static md:w-full md:max-w-[500px]`}
         >
           <Panel
             history={history}
@@ -738,10 +738,9 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, isHotSeatMode
     null
 
   return (
-    <div className='card p-4 flex flex-col gap-4 md:h-[500px]'>
+    <div className='glass-panel p-4 flex flex-col gap-4 md:h-[500px]'>
       <div className='flex items-center justify-between'>
         {currentPlayerText && <p className='text-sm text-zinc-300'>{currentPlayerText}</p>}
-        {status === 'waiting' && <span className='badge-warn'>Waiting for opponent</span>}
       </div>
 
       <div className='flex gap-4 grow items-stretch'>
