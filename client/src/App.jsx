@@ -831,11 +831,15 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
           const r = qrAnchorRef.current.getBoundingClientRect()
           const popupW = 200 // approx container width
           const popupH = 200 // approx container height
-          let top = r.top - popupH - 8
-          if (top < 8) top = r.bottom + 8
-          let left = r.right - popupW
-          if (left < 8) left = 8
+          // Place so the QR's bottom-left corner overlaps near the icon,
+          // then shift left by one icon width to better cover the icon
+          let left = r.left + (r.width / 2) - r.width + 8
+          let top = r.top + (r.height / 2) - popupH + 8
+          // Clamp to viewport
           if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8
+          if (left < 8) left = 8
+          if (top + popupH > window.innerHeight - 8) top = window.innerHeight - popupH - 8
+          if (top < 8) top = 8
           setQrPos({ top, left })
         }
         setIsQrOpen(true)
@@ -843,11 +847,15 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
         if (!qrDataUrl) {
           let dataUrl = null
           try {
+            // Determine module color based on current theme
+            const prefersLight = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+            const moduleColor = prefersLight ? '#000000' : '#FFFFFF'
+            const bgColor = prefersLight ? '#FFFFFF' : '#0000' // transparent on dark, white on light
             dataUrl = await QRCode.toDataURL(url, {
               errorCorrectionLevel: 'M',
               margin: 1,
               width: 240,
-              color: { dark: '#000000', light: '#0000' } // attempt transparent background
+              color: { dark: moduleColor, light: bgColor }
             })
           } catch (_) {
             // Fallback to white background if transparent unsupported
@@ -855,7 +863,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
               errorCorrectionLevel: 'M',
               margin: 1,
               width: 240,
-              color: { dark: '#000000', light: '#ffffff' }
+              color: { dark: '#FFFFFF', light: '#000000' }
             })
           }
           setQrDataUrl(dataUrl)
@@ -921,6 +929,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
                     data-qr-popover='1'
                     role='dialog'
                     aria-label='Connect QR code'
+                    onClick={() => setIsQrOpen(false)}
                   >
                     {qrLoading ? (
                       <span className='text-xs text-zinc-200'>Generating…</span>
