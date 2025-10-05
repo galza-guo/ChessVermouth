@@ -858,13 +858,16 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
 }
 
 function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort }) {
+  // ViewSwitch: versatile middle panel (MoveListView | AnalysisView | EmojiView)
+  const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
   useEffect(() => {
     const el = tableEnd && tableEnd.current
-    if (el) {
+    // ViewSwitch: only auto-scroll when showing MoveListView
+    if (el && panelView === 'MoveListView') {
       el.scrollTop = el.scrollHeight
     }
-  }, [history, tableEnd])
+  }, [history, tableEnd, panelView])
   const handleUndo = () => {
     if (isHotSeatMode && hotSeatGame) {
       hotSeatGame.undo()
@@ -948,7 +951,6 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
   }
 
   // --- AI integration (Stockfish over LAN engine server) ---
-  const [aiOpen, setAiOpen] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiError, setAiError] = useState(null)
   const [aiBest, setAiBest] = useState(null)
@@ -978,7 +980,6 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
     setAiBest(null)
     setAiLines([])
     setAiBusy(true)
-    setAiOpen(true)
     const movesArr = uciFromHistory(history)
     const wsProto = (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:') ? 'wss' : 'ws'
     const host = serverIp
@@ -1070,14 +1071,21 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
   }, [aiBusy, history, serverIp, enginePort, uciFromHistory])
 
   const toggleAi = () => {
+    // ViewSwitch: toggle between MoveListView and AnalysisView
     if (aiBusy) {
+      // If thinking, stop and return to MoveListView
       closeAiWs()
       setAiBusy(false)
-      setAiOpen(false)
+      setPanelView('MoveListView')
       return
     }
-    if (!aiOpen) startAi()
-    else setAiOpen(false)
+    if (panelView !== 'AnalysisView') {
+      setPanelView('AnalysisView')
+      startAi()
+    } else {
+      setPanelView('MoveListView')
+      closeAiWs()
+    }
   }
 
   useEffect(() => () => closeAiWs(), [closeAiWs])
@@ -1097,7 +1105,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               type='button'
               aria-label='Emoji'
               className='neo-btn'
-              onClick={() => console.log('Emoji button clicked')}
+              onClick={() => console.log('Emoji button clicked') /* ViewSwitch: later setPanelView('EmojiView') */}
             >
               <img src={IconEmoji} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
             </button>
@@ -1125,12 +1133,13 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             >Undo</span>
           </div>
 
-          {/* AI (placeholder) */}
+          {/* AI (ViewSwitch toggle) */}
           <div className='relative group'>
             <button
               type='button'
               aria-label='AI'
               className='neo-btn'
+              aria-pressed={panelView === 'AnalysisView'}
               onClick={toggleAi}
             >
               <img src={IconAI} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
@@ -1180,47 +1189,82 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
           <div className='h-16 md:h-24' aria-hidden='true'></div>
         </div>
 
-        {/* Middle: Move List */}
+        {/* Middle: versatile panel (ViewSwitch) */}
         <div className='flex flex-col gap-3 grow min-w-0'>
           <div
             ref={tableEnd}
             role='region'
-            aria-label='Move List'
+            aria-label={panelView === 'AnalysisView' ? 'AI Analysis' : (panelView === 'EmojiView' ? 'Emoji' : 'Move List')}
             className='relative h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'
           >
-            {history.length === 0 ? (
-              <div className='text-xs text-zinc-400'>No moves yet</div>
-            ) : (
-              <table className='w-full table-fixed'>
-                <tbody>
-                {history.map((move, i) => {
-                  if (i % 2 === 0) {
-                    return (
-                      <tr key={i} className='text-center font-semibold text-sm text-white/90'>
-                        <td className='w-10 font-normal text-gray-400'>{i / 2 + 1}.</td>
-                        <td className='px-2'>{move.san}</td>
-                        <td className='px-2'>{history[i + 1]?.san}</td>
-                      </tr>
-                    )
-                  } else {
-                    return null
-                  }
-                })}
-                </tbody>
-              </table>
+            {/* MoveListView */}
+            {panelView === 'MoveListView' && (
+              <>
+                {history.length === 0 ? (
+                  <div className='text-xs text-zinc-400'>No moves yet</div>
+                ) : (
+                  <table className='w-full table-fixed'>
+                    <tbody>
+                    {history.map((move, i) => {
+                      if (i % 2 === 0) {
+                        return (
+                          <tr key={i} className='text-center font-semibold text-sm text-white/90'>
+                            <td className='w-10 font-normal text-gray-400'>{i / 2 + 1}.</td>
+                            <td className='px-2'>{move.san}</td>
+                            <td className='px-2'>{history[i + 1]?.san}</td>
+                          </tr>
+                        )
+                      } else {
+                        return null
+                      }
+                    })}
+                    </tbody>
+                  </table>
+                )}
+                {/* Expandable button (placeholder) */}
+                <button
+                  type='button'
+                  aria-label='Expand move list'
+                  onClick={() => console.log('Expand move list clicked')}
+                  className='absolute bottom-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-md bg-zinc-900/80 border border-white/10 text-white/90 shadow-md backdrop-blur hover:bg-zinc-800/80 active:scale-[0.98]'
+                >
+                  <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
+                    <path d='M12 8l-4 4 4 4' />
+                  </svg>
+                </button>
+              </>
             )}
-            {/* Expandable button (placeholder) */}
-            <button
-              type='button'
-              aria-label='Expand move list'
-              onClick={() => console.log('Expand move list clicked')}
-              className='absolute bottom-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-md bg-zinc-900/80 border border-white/10 text-white/90 shadow-md backdrop-blur hover:bg-zinc-800/80 active:scale-[0.98]'
-            >
-              <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
-                <path d='M12 8l-4 4 4 4' />
-              </svg>
-            </button>
-        </div>
+
+            {/* AnalysisView */}
+            {panelView === 'AnalysisView' && (
+              <div className='space-y-2'>
+                <div className='flex items-center justify-between mb-1'>
+                  <div className='font-semibold text-white/90'>AI Analysis</div>
+                  <div className='flex items-center gap-2'>
+                    {aiBusy && <span className='text-amber-300'>Thinking…</span>}
+                    {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
+                  </div>
+                </div>
+                {aiError && <div className='text-red-400 mb-2'>Error: {aiError}</div>}
+                <div className='space-y-1'>
+                  {aiLines.length === 0 && !aiError && (
+                    <div className='text-zinc-400'>Waiting for lines…</div>
+                  )}
+                  {aiLines.map((l) => (
+                    <div key={l.multipv} className='flex items-center justify-between'>
+                      <div className='text-zinc-300'>#{l.multipv} d{l.depth ?? '-'} — <span className='font-mono'>{formatScore(l.score)}</span></div>
+                      <div className='truncate font-mono text-white/90 ml-2' title={l.pv}>{l.pv}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* EmojiView (placeholder) */}
+            {panelView === 'EmojiView' && (
+              <div className='text-xs text-zinc-400'>Emoji panel coming soon…</div>
+            )}
+          </div>
         {status === 'ready' && !isHotSeatMode && (
           <div className='text-xs text-zinc-400'>
             <p>Connected to Session: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
@@ -1231,31 +1275,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <p>Hot Seat Mode — Two players on same device</p>
           </div>
         )}
-        {/* AI analysis panel */}
-        {aiOpen && (
-          <div className='w-full rounded-lg border border-white/10 bg-zinc-900/70 backdrop-blur p-3 text-xs text-zinc-200 shadow-[0_6px_16px_rgba(0,0,0,0.35)]'>
-            <div className='flex items-center justify-between mb-2'>
-              <div className='font-semibold text-white/90'>AI Analysis</div>
-              <div className='flex items-center gap-2'>
-                {aiBusy && <span className='text-amber-300'>Thinking…</span>}
-                {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
-                <button type='button' onClick={() => { setAiOpen(false); closeAiWs(); }} className='px-2 py-1 rounded border border-white/10 bg-white/5 hover:bg-white/10'>Close</button>
-              </div>
-            </div>
-            {aiError && <div className='text-red-400 mb-2'>Error: {aiError}</div>}
-            <div className='space-y-1'>
-              {aiLines.length === 0 && !aiError && (
-                <div className='text-zinc-400'>Waiting for lines…</div>
-              )}
-              {aiLines.map((l) => (
-                <div key={l.multipv} className='flex items-center justify-between'>
-                  <div className='text-zinc-300'>#{l.multipv} d{l.depth ?? '-'} — <span className='font-mono'>{formatScore(l.score)}</span></div>
-                  <div className='truncate font-mono text-white/90 ml-2' title={l.pv}>{l.pv}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Analysis panel removed; AnalysisView now lives inside the versatile panel above */}
       </div>
 
         {/* Right: clocks (top = opponent, bottom = you) */}
