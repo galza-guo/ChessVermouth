@@ -120,6 +120,20 @@ function App() {
   // Optional player names (for labels)
   const [playerName, setPlayerName] = useState('')
   const [opponentName, setOpponentName] = useState('')
+  // Emoji overlay bursts on/near the board
+  const [emojiBursts, setEmojiBursts] = useState([])
+  const sendEmoji = useCallback((src, label) => {
+    // Add a transient emoji overlay inside the board area
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    // Random position within the board (10%..90%) to avoid edges
+    const top = 10 + Math.random() * 80
+    const left = 10 + Math.random() * 80
+    setEmojiBursts((prev) => [...prev, { id, src, label: label || 'emoji', top, left }])
+    // Auto-remove after 2.5s
+    setTimeout(() => {
+      setEmojiBursts((prev) => prev.filter((e) => e.id !== id))
+    }, 2500)
+  }, [])
   // When a confirmation dialog opens, collapse the floating control panel
   useEffect(() => {
     if (resetConfirmOpen || leaveConfirmOpen) {
@@ -529,7 +543,7 @@ function App() {
       {/* Main Content */}
       <main className='mx-auto max-w-3xl p-4 grid grid-cols-1 gap-4 items-start justify-items-center'>
         <div className='flex items-center justify-center'>
-          {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color})}
+          {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color, emojiBursts })}
         </div>
 
         {/* Game Lobby overlay (does not affect ControlPanel) */}
@@ -608,6 +622,7 @@ function App() {
             setQrLoading={setQrLoading}
             onRequestReset={() => setResetConfirmOpen(true)}
             onRequestLeave={() => setLeaveConfirmOpen(true)}
+            onSendEmoji={sendEmoji}
           />
         </div>
       </main>
@@ -653,7 +668,7 @@ function App() {
   )
 }
 
-function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color}) {
+function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts}) {
   let numToLetter = ["a", "b", "c", "d", "e", "f", "g", "h"]
 
   let boardArr = []
@@ -691,6 +706,24 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
   return (
     <div id="board" className='relative grid-rows-8 grid-cols-8 grid grabbable text-black'>
       {boardArr}
+      {/* Emoji overlays (transient). Positioned in board-relative percentages. */}
+      {Array.isArray(emojiBursts) && emojiBursts.map((e) => (
+        <img
+          key={e.id}
+          src={e.src}
+          alt={e.label || 'emoji'}
+          className='pointer-events-none select-none absolute z-40'
+          style={{
+            top: `${e.top}%`,
+            left: `${e.left}%`,
+            transform: 'translate(-50%, -50%)',
+            width: '64px',
+            height: '64px',
+            opacity: 0.95,
+            filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.25))'
+          }}
+        />
+      ))}
       {isGameOver[0] && <div className='absolute bg-zinc-800 bg-opacity-80 h-full w-full flex items-center justify-center z-40'>
         <div className='font-light text-white text-center text-4xl'>
           Game Over: <br/>
@@ -857,7 +890,7 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
   )
 }
 
-function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort }) {
+function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji }) {
   // ViewSwitch: versatile middle panel (MoveListView | AnalysisView | EmojiView)
   const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
@@ -956,6 +989,24 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
   const [aiBest, setAiBest] = useState(null)
   const [aiLines, setAiLines] = useState([])
   const aiWsRef = useRef(null)
+
+  // --- Emoji assets (thumbnails) ---
+  const emojiImages = useMemo(() => {
+    try {
+      const modules = import.meta.glob('./assets/emojis/*', { eager: true })
+      const list = Object.keys(modules).map((k) => {
+        const mod = modules[k]
+        const src = mod && (mod.default || mod)
+        const name = k.split('/').pop()
+        return { src, name }
+      }).filter((e) => !!e.src)
+      // Stable sort by name
+      list.sort((a, b) => a.name.localeCompare(b.name))
+      return list
+    } catch (_) {
+      return []
+    }
+  }, [])
 
   const uciFromHistory = useCallback((hist) => {
     if (!Array.isArray(hist)) return []
@@ -1088,6 +1139,20 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
     }
   }
 
+  // Toggle EmojiView similar to AI button
+  const toggleEmoji = () => {
+    if (panelView !== 'EmojiView') {
+      // If AI is running, stop it when switching to emojis
+      if (aiBusy) {
+        closeAiWs()
+        setAiBusy(false)
+      }
+      setPanelView('EmojiView')
+    } else {
+      setPanelView('MoveListView')
+    }
+  }
+
   useEffect(() => () => closeAiWs(), [closeAiWs])
 
   return (
@@ -1099,13 +1164,14 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
       <div className='flex gap-4 grow items-stretch'>
         {/* Left: vertical icon-only actions */}
         <div className='flex flex-col items-center gap-2 pr-1 flex-shrink-0'>
-          {/* Emoji (placeholder) */}
+          {/* Emoji (ViewSwitch toggle) */}
           <div className='relative group'>
             <button
               type='button'
               aria-label='Emoji'
               className='neo-btn'
-              onClick={() => console.log('Emoji button clicked') /* ViewSwitch: later setPanelView('EmojiView') */}
+              aria-pressed={panelView === 'EmojiView'}
+              onClick={toggleEmoji}
             >
               <img src={IconEmoji} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
             </button>
@@ -1262,7 +1328,25 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
 
             {/* EmojiView (placeholder) */}
             {panelView === 'EmojiView' && (
-              <div className='text-xs text-zinc-400'>Emoji panel coming soon…</div>
+              <div className='h-full'>
+                {emojiImages.length === 0 ? (
+                  <div className='text-xs text-zinc-400'>No emojis found.</div>
+                ) : (
+                  <div className='grid grid-cols-4 sm:grid-cols-6 gap-2 pr-1'>
+                    {emojiImages.map((e) => (
+                      <button
+                        key={e.src}
+                        type='button'
+                        className='relative p-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 active:scale-[0.98]'
+                        title={e.name}
+                        onClick={() => onSendEmoji && onSendEmoji(e.src, e.name)}
+                      >
+                        <img src={e.src} alt={e.name} className='h-10 w-10 object-contain' />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         {status === 'ready' && !isHotSeatMode && (
@@ -1737,7 +1821,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 }
 
 //render the correct panel based on the game status
-function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave }) {
+function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji }) {
   // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
   return (
     <ControlPanel
@@ -1761,6 +1845,7 @@ function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gam
       serverIp={serverIp}
       serverPort={serverPort}
       enginePort={enginePort}
+      onSendEmoji={onSendEmoji}
     />
   )
 }
