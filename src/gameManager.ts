@@ -84,8 +84,11 @@ export function buildPositionFromGame(state: GameState): { fen?: string; moves: 
 }
 
 export function validateFen(fen: string) {
-  const result = Chess.validate_fen(fen);
-  if (!result.valid) {
+  try {
+    // chess.js throws on invalid FEN when constructing with an invalid string
+    // eslint-disable-next-line no-new
+    new Chess(fen);
+  } catch (_) {
     throw new Error('Invalid FEN');
   }
 }

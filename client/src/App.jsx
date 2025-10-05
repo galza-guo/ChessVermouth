@@ -58,6 +58,12 @@ function App() {
     const n = envPort ? parseInt(envPort) : 5173
     return Number.isFinite(n) ? n : 5173
   }, [])
+  // Optional engine server port (for Stockfish analysis server)
+  const enginePort = useMemo(() => {
+    const env = import.meta.env.VITE_ENGINE_PORT
+    const n = env ? parseInt(env) : 8080
+    return Number.isFinite(n) ? n : 8080
+  }, [])
 
   // Hot seat mode game state
   const [hotSeatGame, setHotSeatGame] = useState(null)
@@ -588,6 +594,7 @@ function App() {
             serverPort={serverPort}
             serverInfo={serverInfo}
             clientPort={clientPort}
+            enginePort={enginePort}
             isQrOpen={isQrOpen}
             setIsQrOpen={setIsQrOpen}
             qrDataUrl={qrDataUrl}
@@ -845,7 +852,7 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
   )
 }
 
-function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName }) {
+function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort }) {
   // Auto-scroll the move list to the latest move
   useEffect(() => {
     const el = tableEnd && tableEnd.current
@@ -935,6 +942,141 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
     )
   }
 
+  // --- AI integration (Stockfish over LAN engine server) ---
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState(null)
+  const [aiBest, setAiBest] = useState(null)
+  const [aiLines, setAiLines] = useState([])
+  const aiWsRef = useRef(null)
+
+  const uciFromHistory = useCallback((hist) => {
+    if (!Array.isArray(hist)) return []
+    return hist.map((m) => {
+      let promo = ''
+      if (m && typeof m.san === 'string') {
+        const mm = m.san.match(/=([QRBN])/)
+        if (mm && mm[1]) promo = mm[1].toLowerCase()
+      }
+      return `${m.from}${m.to}${promo}`
+    })
+  }, [])
+
+  const closeAiWs = useCallback(() => {
+    try { if (aiWsRef.current) aiWsRef.current.close() } catch (_) {}
+    aiWsRef.current = null
+  }, [])
+
+  const startAi = useCallback(() => {
+    if (aiBusy) return
+    setAiError(null)
+    setAiBest(null)
+    setAiLines([])
+    setAiBusy(true)
+    setAiOpen(true)
+    const movesArr = uciFromHistory(history)
+    const wsProto = (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:') ? 'wss' : 'ws'
+    const host = serverIp
+    const port = (enginePort && Number.isFinite(enginePort)) ? enginePort : 8080
+    const q = new URLSearchParams({
+      multipv: '2',
+      movetime: '300',
+      moves: movesArr.join(' '),
+    })
+    const url = `${wsProto}://${host}:${port}/ws/analyze?${q.toString()}`
+    try {
+      const ws = new WebSocket(url)
+      aiWsRef.current = ws
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data)
+          if (msg.type === 'info') {
+            setAiLines((prev) => {
+              const next = [...prev]
+              const line = { multipv: msg.multipv, depth: msg.depth, pv: msg.pv, score: msg.score }
+              const idx = next.findIndex((l) => l.multipv === line.multipv)
+              if (idx >= 0) next[idx] = line
+              else next.push(line)
+              next.sort((a, b) => a.multipv - b.multipv)
+              return next
+            })
+          } else if (msg.type === 'result') {
+            setAiBest(msg.bestmove)
+            if (Array.isArray(msg.lines)) {
+              const mapped = msg.lines.map((l, i) => ({ multipv: i + 1, depth: l.depth, pv: l.pv, score: l.score }))
+              setAiLines(mapped)
+            }
+            setAiBusy(false)
+          } else if (msg.type === 'error') {
+            const m = (msg.message || '').toString()
+            if (m.includes('Missing gameId') || m.includes('Game not found')) {
+              // Fallback: mirror current game into engine server via REST, then use stateful WS
+              (async () => {
+                try {
+                  const engineGameId = `eng-${gameId || 'session'}-${Date.now()}`
+                  // Proxy via the socket server to avoid CORS
+                  const proxyBase = `http://${serverIp}:${serverPort}/engine`
+                  await fetch(`${proxyBase}/game/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameId: engineGameId })
+                  })
+                  for (const mv of movesArr) {
+                    await fetch(`${proxyBase}/game/move`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ gameId: engineGameId, uci: mv })
+                    })
+                  }
+                  // Switch to stateful stream
+                  try { ws.close() } catch (_) {}
+                  const q2 = new URLSearchParams({ multipv: '2', movetime: '300', gameId: engineGameId })
+                  const url2 = `${wsProto}://${host}:${port}/ws/analyze?${q2.toString()}`
+                  const ws2 = new WebSocket(url2)
+                  aiWsRef.current = ws2
+                  ws2.onmessage = ws.onmessage
+                  ws2.onerror = () => { setAiError('Connection error'); setAiBusy(false) }
+                  ws2.onclose = () => { setAiBusy(false) }
+                } catch (e) {
+                  setAiError(m || 'Engine error')
+                  setAiBusy(false)
+                }
+              })()
+            } else {
+              setAiError(m || 'Engine error')
+              setAiBusy(false)
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      ws.onerror = () => {
+        setAiError('Connection error')
+        setAiBusy(false)
+      }
+      ws.onclose = () => {
+        setAiBusy(false)
+      }
+    } catch (e) {
+      setAiError('Failed to connect')
+      setAiBusy(false)
+    }
+  }, [aiBusy, history, serverIp, enginePort, uciFromHistory])
+
+  const toggleAi = () => {
+    if (aiBusy) {
+      closeAiWs()
+      setAiBusy(false)
+      setAiOpen(false)
+      return
+    }
+    if (!aiOpen) startAi()
+    else setAiOpen(false)
+  }
+
+  useEffect(() => () => closeAiWs(), [closeAiWs])
+
   return (
     <div className='glass-panel p-4 flex flex-col gap-4 md:h-[500px]'>
       <div className='flex items-center justify-between'>
@@ -987,7 +1129,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               type='button'
               aria-label='AI'
               className='neo-btn'
-              onClick={() => console.log('AI button clicked')}
+              onClick={toggleAi}
             >
               <span role='img' aria-hidden='true' className='text-base'>🤖</span>
             </button>
@@ -1083,18 +1225,43 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
                 <path d='M12 8l-4 4 4 4' />
               </svg>
             </button>
-          </div>
-          {status === 'ready' && !isHotSeatMode && (
-            <div className='text-xs text-zinc-400'>
-              <p>Connected to Session: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
-            </div>
-          )}
-          {isHotSeatMode && (
-            <div className='text-xs text-zinc-400'>
-              <p>Hot Seat Mode — Two players on same device</p>
-            </div>
-          )}
         </div>
+        {status === 'ready' && !isHotSeatMode && (
+          <div className='text-xs text-zinc-400'>
+            <p>Connected to Session: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
+          </div>
+        )}
+        {isHotSeatMode && (
+          <div className='text-xs text-zinc-400'>
+            <p>Hot Seat Mode — Two players on same device</p>
+          </div>
+        )}
+        {/* AI analysis panel */}
+        {aiOpen && (
+          <div className='w-full rounded-lg border border-white/10 bg-zinc-900/70 backdrop-blur p-3 text-xs text-zinc-200 shadow-[0_6px_16px_rgba(0,0,0,0.35)]'>
+            <div className='flex items-center justify-between mb-2'>
+              <div className='font-semibold text-white/90'>AI Analysis</div>
+              <div className='flex items-center gap-2'>
+                {aiBusy && <span className='text-amber-300'>Thinking…</span>}
+                {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
+                <button type='button' onClick={() => { setAiOpen(false); closeAiWs(); }} className='px-2 py-1 rounded border border-white/10 bg-white/5 hover:bg-white/10'>Close</button>
+              </div>
+            </div>
+            {aiError && <div className='text-red-400 mb-2'>Error: {aiError}</div>}
+            <div className='space-y-1'>
+              {aiLines.length === 0 && !aiError && (
+                <div className='text-zinc-400'>Waiting for lines…</div>
+              )}
+              {aiLines.map((l) => (
+                <div key={l.multipv} className='flex items-center justify-between'>
+                  <div className='text-zinc-300'>#{l.multipv} d{l.depth ?? '-'} — <span className='font-mono'>{formatScore(l.score)}</span></div>
+                  <div className='truncate font-mono text-white/90 ml-2' title={l.pv}>{l.pv}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
         {/* Right: clocks (top = opponent, bottom = you) */}
         <div className='flex flex-col gap-3 w-44 md:w-56 shrink-0'>
@@ -1115,6 +1282,13 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
       {/* bottom section removed per request */}
     </div>
   )
+}
+
+function formatScore(score) {
+  if (!score || typeof score !== 'object') return '-'
+  if (score.type === 'mate') return `#${score.value}`
+  if (score.type === 'cp') return `${score.value >= 0 ? '+' : ''}${score.value}`
+  return '-'
 }
 
 function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, setPlayerName }) {
@@ -1548,7 +1722,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 }
 
 //render the correct panel based on the game status
-function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave }) {
+function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave }) {
   // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
   return (
     <ControlPanel
@@ -1569,6 +1743,9 @@ function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gam
       updateHotSeatPosition={updateHotSeatPosition}
       onRequestReset={onRequestReset}
       onRequestLeave={onRequestLeave}
+      serverIp={serverIp}
+      serverPort={serverPort}
+      enginePort={enginePort}
     />
   )
 }

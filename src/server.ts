@@ -53,6 +53,8 @@ export async function createServer() {
   const app = express();
   app.use(express.json());
   app.use(restrictToLan);
+  // Allow CORS for LAN origins so the browser can call REST endpoints
+  app.use(lanCors);
   const publicDir = path.resolve(__dirname, '../public');
   app.use(express.static(publicDir));
 
@@ -94,68 +96,101 @@ export async function createServer() {
     const gameId = reqUrl.searchParams.get('gameId');
     const multipvParam = reqUrl.searchParams.get('multipv');
     const movetimeParam = reqUrl.searchParams.get('movetime');
+    const fenParam = reqUrl.searchParams.get('fen') || undefined;
+    const movesParam = reqUrl.searchParams.get('moves') || undefined; // space-separated UCI moves
     const multipv = multipvParam ? Number.parseInt(multipvParam, 10) : config.defaultMultiPv;
     const movetime = movetimeParam ? Number.parseInt(movetimeParam, 10) : config.defaultMovetime;
-    if (!gameId) {
-      socket.send(JSON.stringify({ type: 'error', message: 'Missing gameId' }));
-      socket.close(1008, 'Missing gameId');
-      return;
-    }
-    let state;
-    try {
-      state = gameManager.getGame(gameId);
-    } catch (error) {
-      socket.send(JSON.stringify({ type: 'error', message: (error as Error).message }));
-      socket.close(1008, 'Game not found');
-      return;
-    }
+
     const abortController = new AbortController();
     socket.on('close', () => abortController.abort());
-    pool
-      .analyzeWithWorker(state.workerId, {
-        fen: state.initialFen,
-        moves: [...state.moves],
-        movetime,
-        multipv,
-        onInfo: (info) => {
+
+    const sendInfo = (info: { multipv: number; depth?: number; pv: string[]; score?: unknown; nps?: number; nodes?: number }) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify({
+            type: 'info',
+            multipv: info.multipv,
+            depth: info.depth,
+            pv: info.pv.join(' '),
+            score: info.score ?? null,
+            nps: info.nps,
+            nodes: info.nodes,
+          }),
+        );
+      }
+    };
+
+    const sendResultAndClose = (result: { bestmove: string; lines: { pv: string[]; score?: unknown; depth?: number }[] }) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify({
+            type: 'result',
+            bestmove: result.bestmove,
+            lines: result.lines.map((line) => ({
+              pv: line.pv.join(' '),
+              score: line.score ?? null,
+              depth: line.depth,
+            })),
+          }),
+        );
+        socket.close(1000, 'analysis complete');
+      }
+    };
+
+    // If a gameId is provided, use the existing game state managed on the server.
+    if (gameId) {
+      let state;
+      try {
+        state = gameManager.getGame(gameId);
+      } catch (error) {
+        socket.send(JSON.stringify({ type: 'error', message: (error as Error).message }));
+        socket.close(1008, 'Game not found');
+        return;
+      }
+      pool
+        .analyzeWithWorker(state.workerId, {
+          fen: state.initialFen,
+          moves: [...state.moves],
+          movetime,
+          multipv,
+          onInfo: sendInfo,
+          signal: abortController.signal,
+        })
+        .then(sendResultAndClose)
+        .catch((error) => {
           if (socket.readyState === WebSocket.OPEN) {
-            socket.send(
-              JSON.stringify({
-                type: 'info',
-                multipv: info.multipv,
-                depth: info.depth,
-                pv: info.pv.join(' '),
-                score: info.score ?? null,
-                nps: info.nps,
-                nodes: info.nodes,
-              }),
-            );
+            socket.send(JSON.stringify({ type: 'error', message: (error as Error).message }));
+            socket.close(1011, 'analysis error');
           }
-        },
-        signal: abortController.signal,
-      })
-      .then((result) => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(
-            JSON.stringify({
-              type: 'result',
-              bestmove: result.bestmove,
-              lines: result.lines.map((line) => ({
-                pv: line.pv.join(' '),
-                score: line.score ?? null,
-                depth: line.depth,
-              })),
-            }),
-          );
-          socket.close(1000, 'analysis complete');
-        }
-      })
-      .catch((error) => {
+        });
+      return;
+    }
+
+    // Stateless mode: accept fen and/or moves directly via query to avoid REST roundtrips/CORS.
+    const directMoves = movesParam ? movesParam.split(' ').filter(Boolean) : [];
+
+    (async () => {
+      const handle = await pool.acquire();
+      try {
+        await pool.newGame(handle.id);
+        const result = await pool.analyzeWithWorker(handle.id, {
+          fen: fenParam,
+          moves: directMoves.length > 0 ? directMoves : undefined,
+          movetime,
+          multipv,
+          onInfo: sendInfo,
+          signal: abortController.signal,
+        });
+        sendResultAndClose(result);
+      } catch (error) {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: 'error', message: (error as Error).message }));
           socket.close(1011, 'analysis error');
         }
-      });
+      } finally {
+        pool.release(handle.id);
+      }
+    })();
   });
 
   const port = Number.parseInt(process.env.PORT ?? '8080', 10);
@@ -197,6 +232,23 @@ function restrictToLan(req: express.Request, res: express.Response, next: expres
   const remote = normalizeIp(req.socket.remoteAddress ?? '127.0.0.1');
   if (!isPrivateIp(remote)) {
     res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+}
+
+function lanCors(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const origin = req.headers.origin ?? '';
+  // Reflect LAN origins or localhost; browsers still enforce that the JS came from the same LAN
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
     return;
   }
   next();

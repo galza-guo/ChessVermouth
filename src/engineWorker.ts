@@ -128,7 +128,7 @@ export class EngineWorker {
     if (!this.child) await this.init();
     for (const [name, value] of Object.entries(options)) {
       if (value === undefined) continue;
-      if (name === 'MultiPV') this.currentMultiPv = value;
+      if (name === 'MultiPV') this.currentMultiPv = typeof value === 'number' ? value : Number(value);
       this.write(`setoption name ${name} value ${value}`);
     }
     this.write('isready');

@@ -9,11 +9,18 @@
  *   ./chessvermouth.js (if made executable)
  */
 
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+const require = createRequire(import.meta.url);
+
 const { spawn, execSync, exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Platform detection and configuration
 const platform = os.platform();
@@ -343,9 +350,9 @@ async function startServer() {
       const interfaces = os.networkInterfaces();
       let lanIp = 'localhost';
       for (const name of Object.keys(interfaces)) {
-        for (const interface of interfaces[name]) {
-          if (interface.family === 'IPv4' && !interface.internal && interface.address.startsWith('192.168.')) {
-            lanIp = interface.address;
+        for (const iface of interfaces[name]) {
+          if (iface.family === 'IPv4' && !iface.internal && iface.address.startsWith('192.168.')) {
+            lanIp = iface.address;
             break;
           }
         }
@@ -861,9 +868,12 @@ async function main() {
   }
 }
 
-// Run if called directly
-if (require.main === module) {
+// Run if called directly (ESM-compatible)
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }
 
-module.exports = { main, checkDependencies, installDependencies, startServer, startClient };
+// Optional CommonJS export guard (no-op under ESM)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { main, checkDependencies, installDependencies, startServer, startClient };
+}

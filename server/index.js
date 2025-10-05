@@ -4,6 +4,7 @@ const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
 app.use(cors())
+app.use(express.json())
 
 const { Chess } = require('chess.js')
 const os = require('os')
@@ -42,6 +43,52 @@ function getLanIp() {
 }
 
 const LAN_IP = process.env.LAN_IP || getLanIp()
+const ENGINE_HOST = process.env.ENGINE_HOST || '127.0.0.1'
+const ENGINE_PORT = process.env.ENGINE_PORT || '8080'
+const ENGINE_BASE = process.env.ENGINE_BASE || `http://${ENGINE_HOST}:${ENGINE_PORT}`
+
+// Proxy a subset of engine REST endpoints to avoid browser CORS issues
+app.post('/engine/game/start', async (req, res) => {
+  try {
+    const r = await fetch(`${ENGINE_BASE}/game/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {})
+    })
+    const data = await r.json()
+    res.status(r.status).json(data)
+  } catch (err) {
+    res.status(502).json({ error: 'Engine proxy start failed' })
+  }
+})
+
+app.post('/engine/game/move', async (req, res) => {
+  try {
+    const r = await fetch(`${ENGINE_BASE}/game/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {})
+    })
+    const data = await r.json()
+    res.status(r.status).json(data)
+  } catch (err) {
+    res.status(502).json({ error: 'Engine proxy move failed' })
+  }
+})
+
+app.post('/engine/game/end', async (req, res) => {
+  try {
+    const r = await fetch(`${ENGINE_BASE}/game/end`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {})
+    })
+    const data = await r.json()
+    res.status(r.status).json(data)
+  } catch (err) {
+    res.status(502).json({ error: 'Engine proxy end failed' })
+  }
+})
 // Try to detect Wi-Fi SSID/Network Name (best-effort, platform-specific)
 function getNetworkName() {
   // Allow override

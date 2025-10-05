@@ -13,23 +13,25 @@ const BASE_URL = `https://github.com/official-stockfish/Stockfish/releases/downl
 const PLATFORM_MAP = {
   'linux-x64': {
     asset: 'stockfish-ubuntu-x86-64-avx2.tar',
-    binary: 'stockfish-ubuntu-x86-64-avx2/stockfish',
+    binary: 'stockfish-ubuntu-x86-64-avx2',
   },
   'linux-arm64': {
-    asset: 'stockfish-ubuntu-arm64.tar',
-    binary: 'stockfish-ubuntu-arm64/stockfish',
+    // No official Ubuntu ARM64 binary as of sf_17.1
+    // Intentionally left invalid to trigger a helpful error if selected.
+    asset: 'UNSUPPORTED',
+    binary: 'UNSUPPORTED',
   },
   'darwin-x64': {
-    asset: 'stockfish-macos-x86-64.zip',
-    binary: 'stockfish-apple-silicon/MacOS/stockfish',
+    asset: 'stockfish-macos-x86-64.tar',
+    binary: 'stockfish-macos-x86-64',
   },
   'darwin-arm64': {
-    asset: 'stockfish-macos-m1.zip',
-    binary: 'stockfish-apple-silicon/MacOS/stockfish',
+    asset: 'stockfish-macos-m1-apple-silicon.tar',
+    binary: 'stockfish-macos-m1-apple-silicon',
   },
   'win32-x64': {
     asset: 'stockfish-windows-x86-64-avx2.zip',
-    binary: 'stockfish-windows-x86-64-avx2.exe',
+    binary: 'stockfish-windows-x86-64.exe',
   },
 };
 
@@ -147,6 +149,9 @@ async function verifyEngine(binaryPath) {
 async function main() {
   const platformKey = detectPlatform();
   const platformInfo = PLATFORM_MAP[platformKey];
+  if (platformInfo.asset === 'UNSUPPORTED') {
+    throw new Error(`No official binary available for ${platformKey} in ${VERSION_TAG}. Please build from source per Stockfish docs.`);
+  }
   const archiveName = platformInfo.asset;
   const downloadUrl = `${BASE_URL}${archiveName}`;
   const tmpDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'stockfish-'));

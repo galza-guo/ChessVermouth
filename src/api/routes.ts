@@ -82,7 +82,10 @@ export function registerRoutes(app: express.Express, deps: RoutesDeps) {
     try {
       const payload = gameAnalysisSchema.parse(req.body);
       const chess = new Chess();
-      if (!chess.load_pgn(payload.pgn, { sloppy: true })) {
+      try {
+        // loadPgn typings vary across chess.js versions; rely on exceptions rather than boolean return
+        (chess as any).loadPgn(payload.pgn);
+      } catch (_) {
         throw new Error('Invalid PGN');
       }
       const headers = chess.header();
