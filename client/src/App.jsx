@@ -11,6 +11,11 @@ import ConfirmDialog from './components/ConfirmDialog'
 import GVImage from './assets/images/G&V.webp'
 import BoyImage from './assets/images/boy.webp'
 import GirlImage from './assets/images/girl.webp'
+import IconEmoji from './assets/icons/Emoji.png'
+import IconUndo from './assets/icons/Undo.png'
+import IconAI from './assets/icons/AI.png'
+import IconReset from './assets/icons/Reset.png'
+import IconLeave from './assets/icons/Leave.png'
 
 const icons = { bb, bk, bn, bp, bq, br, wb, wk, wn, wp, wq, wr }
 const sounds = { move, check, capture, castle, gameOver }
@@ -1094,7 +1099,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               className='neo-btn'
               onClick={() => console.log('Emoji button clicked')}
             >
-              <span role='img' aria-hidden='true' className='text-lg'>😊</span>
+              <img src={IconEmoji} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
             </button>
             <span
               role='tooltip'
@@ -1111,10 +1116,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               className='neo-btn'
               onClick={handleUndo}
             >
-              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
-                <path d='M9 14L4 9l5-5' />
-                <path d='M20 20a8 8 0 0 0-8-8H4' />
-              </svg>
+              <img src={IconUndo} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
             </button>
             <span
               role='tooltip'
@@ -1131,7 +1133,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               className='neo-btn'
               onClick={toggleAi}
             >
-              <span role='img' aria-hidden='true' className='text-base'>🤖</span>
+              <img src={IconAI} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
             </button>
             <span
               role='tooltip'
@@ -1148,10 +1150,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               className='neo-btn'
               onClick={handleReset}
             >
-              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
-                <path d='M21 12a9 9 0 1 1-9-9' />
-                <path d='M3 3v6h6' />
-              </svg>
+              <img src={IconReset} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
             </button>
             <span
               role='tooltip'
@@ -1168,11 +1167,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               className='neo-btn'
               onClick={handleLeave}
             >
-              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
-                <path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' />
-                <path d='M16 17l5-5-5-5' />
-                <path d='M21 12H9' />
-              </svg>
+              <img src={IconLeave} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain ml-1.5' />
             </button>
             <span
               role='tooltip'
