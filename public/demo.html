@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Stockfish Analysis Demo</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background: #f7f7f7;
+      }
+      #pv-list {
+        margin-top: 1rem;
+        padding: 0;
+        list-style: none;
+      }
+      #pv-list li {
+        background: #fff;
+        margin-bottom: 0.5rem;
+        padding: 0.75rem;
+        border-radius: 4px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      }
+      .bar-container {
+        width: 200px;
+        height: 16px;
+        background: #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-top: 0.5rem;
+      }
+      .bar-fill {
+        height: 100%;
+        width: 50%;
+        background: linear-gradient(90deg, #3f87a6, #ebf8e1);
+        transition: width 0.3s ease;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Live Analysis Demo</h1>
+    <p>Open a game in progress and press “Connect” to stream multi-PV information.</p>
+    <div>
+      <label>Game ID <input id="gameId" value="demo-game" /></label>
+      <label>MultiPV <input id="multipv" type="number" value="3" min="1" max="5" /></label>
+      <button id="connect">Connect</button>
+    </div>
+    <div class="bar-container"><div id="bar" class="bar-fill"></div></div>
+    <ul id="pv-list"></ul>
+    <script>
+      const connectBtn = document.getElementById('connect');
+      const pvList = document.getElementById('pv-list');
+      const bar = document.getElementById('bar');
+      connectBtn.addEventListener('click', () => {
+        pvList.innerHTML = '';
+        const gameId = document.getElementById('gameId').value.trim();
+        const multipv = document.getElementById('multipv').value;
+        if (!gameId) {
+          alert('Game ID required');
+          return;
+        }
+        const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+        const url = `${protocol}://${location.host}/ws/analyze?gameId=${encodeURIComponent(gameId)}&multipv=${multipv}`;
+        const socket = new WebSocket(url);
+        socket.onmessage = (event) => {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'info') {
+            updateList(payload);
+            updateBar(payload.score);
+          } else if (payload.type === 'result') {
+            updateList({ ...payload, final: true });
+          } else if (payload.type === 'error') {
+            alert(payload.message);
+          }
+        };
+      });
+
+      function updateList(data) {
+        if (!data.lines) {
+          const existing = document.querySelector(`li[data-multipv="${data.multipv}"]`);
+          const text = `${data.multipv}. depth ${data.depth ?? '-'} | score ${formatScore(data.score)} | pv ${data.pv}`;
+          if (existing) {
+            existing.textContent = text;
+          } else {
+            const li = document.createElement('li');
+            li.dataset.multipv = data.multipv;
+            li.textContent = text;
+            pvList.appendChild(li);
+          }
+          return;
+        }
+        pvList.innerHTML = '';
+        data.lines.forEach((line, idx) => {
+          const li = document.createElement('li');
+          li.textContent = `${idx + 1}. depth ${line.depth ?? '-'} | score ${formatScore(line.score)} | pv ${line.pv}`;
+          pvList.appendChild(li);
+        });
+      }
+
+      function updateBar(score) {
+        if (!score || score.type !== 'cp') return;
+        const clamped = Math.max(-400, Math.min(400, score.value));
+        const percentage = ((clamped + 400) / 800) * 100;
+        bar.style.width = `${percentage}%`;
+      }
+
+      function formatScore(score) {
+        if (!score) return 'n/a';
+        if (score.type === 'mate') return `M${score.value}`;
+        return `${score.value / 100}`;
+      }
+    </script>
+  </body>
+</html>
