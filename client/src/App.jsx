@@ -891,12 +891,12 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
 }
 
 function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji }) {
-  // ViewSwitch: versatile middle panel (MoveListView | AnalysisView | EmojiView)
+  // ViewWindow: versatile middle panel (MoveListView | AnalysisView | EmojiView)
   const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
   useEffect(() => {
     const el = tableEnd && tableEnd.current
-    // ViewSwitch: only auto-scroll when showing MoveListView
+    // ViewWindow: only auto-scroll when showing MoveListView
     if (el && panelView === 'MoveListView') {
       el.scrollTop = el.scrollHeight
     }
@@ -1122,7 +1122,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
   }, [aiBusy, history, serverIp, enginePort, uciFromHistory])
 
   const toggleAi = () => {
-    // ViewSwitch: toggle between MoveListView and AnalysisView
+    // ViewWindow: toggle between MoveListView and AnalysisView
     if (aiBusy) {
       // If thinking, stop and return to MoveListView
       closeAiWs()
@@ -1164,7 +1164,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
       <div className='flex gap-4 grow items-stretch'>
         {/* Left: vertical icon-only actions */}
         <div className='flex flex-col items-center gap-2 pr-1 flex-shrink-0'>
-          {/* Emoji (ViewSwitch toggle) */}
+          {/* Emoji (ViewWindow toggle) */}
           <div className='relative group'>
             <button
               type='button'
@@ -1199,11 +1199,11 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             >Undo</span>
           </div>
 
-          {/* AI (ViewSwitch toggle) */}
+          {/* AI (ViewWindow toggle) */}
           <div className='relative group'>
             <button
               type='button'
-              aria-label='AI'
+              aria-label='Analyze'
               className='neo-btn'
               aria-pressed={panelView === 'AnalysisView'}
               onClick={toggleAi}
@@ -1214,7 +1214,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               role='tooltip'
               aria-hidden='true'
               className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
-            >AI</span>
+            >Analyze</span>
           </div>
 
           {/* Reset */}
@@ -1255,7 +1255,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
           <div className='h-16 md:h-24' aria-hidden='true'></div>
         </div>
 
-        {/* Middle: versatile panel (ViewSwitch) */}
+        {/* Middle: versatile panel (ViewWindow) */}
         <div className='flex flex-col gap-3 grow min-w-0'>
           <div
             ref={tableEnd}
@@ -1303,13 +1303,10 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
 
             {/* AnalysisView */}
             {panelView === 'AnalysisView' && (
-              <div className='space-y-2'>
-                <div className='flex items-center justify-between mb-1'>
-                  <div className='font-semibold text-white/90'>AI Analysis</div>
-                  <div className='flex items-center gap-2'>
-                    {aiBusy && <span className='text-amber-300'>Thinking…</span>}
-                    {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
-                  </div>
+              <div className='space-y-2 text-sm'>
+                <div className='flex items-center justify-end gap-2 mb-1'>
+                  {aiBusy && <span className='text-amber-300'>Thinking…</span>}
+                  {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
                 </div>
                 {aiError && <div className='text-red-400 mb-2'>Error: {aiError}</div>}
                 <div className='space-y-1'>
@@ -1332,16 +1329,16 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
                 {emojiImages.length === 0 ? (
                   <div className='text-xs text-zinc-400'>No emojis found.</div>
                 ) : (
-                  <div className='grid grid-cols-4 sm:grid-cols-6 gap-2 pr-1'>
+                  <div className='grid grid-cols-4 sm:grid-cols-6 gap-0'>
                     {emojiImages.map((e) => (
                       <button
                         key={e.src}
                         type='button'
-                        className='relative p-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 active:scale-[0.98]'
+                        className='relative m-0 p-0 w-full aspect-square rounded-none border-0 bg-transparent'
                         title={e.name}
                         onClick={() => onSendEmoji && onSendEmoji(e.src, e.name)}
                       >
-                        <img src={e.src} alt={e.name} className='h-10 w-10 object-contain' />
+                        <img src={e.src} alt={e.name} className='absolute inset-0 h-full w-full object-contain' />
                       </button>
                     ))}
                   </div>
@@ -1359,7 +1356,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <p>Hot Seat Mode — Two players on same device</p>
           </div>
         )}
-        {/* Analysis panel removed; AnalysisView now lives inside the versatile panel above */}
+        {/* Analysis panel removed; AnalysisView now lives inside the ViewWindow above */}
       </div>
 
         {/* Right: clocks (top = opponent, bottom = you) */}
