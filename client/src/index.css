@@ -132,6 +132,10 @@ button {
       6px 6px 12px rgba(0, 0, 0, 0.55),
       -6px -6px 12px rgba(255, 255, 255, 0.04);
   }
+  /* Smoother color/shadow transitions for toggle buttons */
+  .neo-btn-toggle {
+    transition: background-color 220ms ease, box-shadow 220ms ease, transform 160ms ease;
+  }
   .neo-btn:hover {
     box-shadow:
       4px 4px 10px rgba(0, 0, 0, 0.5),
@@ -142,6 +146,45 @@ button {
       inset 3px 3px 6px rgba(0, 0, 0, 0.6),
       inset -3px -3px 6px rgba(255, 255, 255, 0.06);
     transform: translateY(0.5px);
+  }
+
+  /* Active states for toggles */
+  .neo-btn.emoji-active {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.18) 0%, rgba(6, 95, 70, 0.22) 100%);
+    border-color: rgba(16, 185, 129, 0.45);
+    box-shadow:
+      0 0 0 2px rgba(16, 185, 129, 0.15),
+      6px 6px 12px rgba(0, 0, 0, 0.55),
+      -6px -6px 12px rgba(16, 185, 129, 0.08);
+  }
+  .neo-btn.analyze-active {
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.18) 0%, rgba(29, 78, 216, 0.22) 100%);
+    border-color: rgba(59, 130, 246, 0.45);
+    box-shadow:
+      0 0 0 2px rgba(59, 130, 246, 0.15),
+      6px 6px 12px rgba(0, 0, 0, 0.55),
+      -6px -6px 12px rgba(59, 130, 246, 0.08);
+  }
+
+  /* Destructive variant for circular buttons */
+  .neo-btn-danger {
+    background: linear-gradient(180deg, rgba(244, 63, 94, 0.18) 0%, rgba(136, 19, 55, 0.22) 100%);
+    border-color: rgba(244, 63, 94, 0.45);
+    box-shadow:
+      0 0 0 1px rgba(244, 63, 94, 0.12),
+      6px 6px 12px rgba(0, 0, 0, 0.55),
+      -6px -6px 12px rgba(244, 63, 94, 0.08);
+  }
+  .neo-btn-danger:hover {
+    box-shadow:
+      0 0 0 1px rgba(244, 63, 94, 0.18),
+      4px 4px 10px rgba(0, 0, 0, 0.5),
+      -4px -4px 10px rgba(244, 63, 94, 0.1);
+  }
+  .neo-btn-danger:active {
+    box-shadow:
+      inset 3px 3px 6px rgba(0, 0, 0, 0.6),
+      inset -3px -3px 6px rgba(244, 63, 94, 0.12);
   }
 
   /* Frosted glass panel (floating control panel) */

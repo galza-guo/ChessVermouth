@@ -12,8 +12,10 @@ import GVImage from './assets/images/G&V.webp'
 import BoyImage from './assets/images/boy.webp'
 import GirlImage from './assets/images/girl.webp'
 import IconEmoji from './assets/icons/Emoji.png'
+import IconEmojiOn from './assets/icons/Emoji-on.png'
 import IconUndo from './assets/icons/Undo.png'
 import IconAI from './assets/icons/AI.png'
+import IconAnalyseOn from './assets/icons/Analyse-on.png'
 import IconReset from './assets/icons/Reset.png'
 import IconLeave from './assets/icons/Leave.png'
 
@@ -1169,17 +1171,43 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <button
               type='button'
               aria-label='Emoji'
-              className='neo-btn'
+              className={`neo-btn neo-btn-toggle ${panelView === 'EmojiView' ? 'emoji-active' : ''}`}
               aria-pressed={panelView === 'EmojiView'}
               onClick={toggleEmoji}
             >
-              <img src={IconEmoji} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
+              <img
+                src={panelView === 'EmojiView' ? IconEmojiOn : IconEmoji}
+                alt='' aria-hidden='true'
+                className={`h-5 w-auto object-contain ${panelView === 'EmojiView' ? '' : 'brightness-0 invert'}`}
+              />
             </button>
             <span
               role='tooltip'
               aria-hidden='true'
               className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
             >Emoji</span>
+          </div>
+
+          {/* AI (ViewWindow toggle) - moved above Undo for prominence */}
+          <div className='relative group'>
+            <button
+              type='button'
+              aria-label='Analyse'
+              className={`neo-btn neo-btn-toggle ${panelView === 'AnalysisView' ? 'analyze-active' : ''}`}
+              aria-pressed={panelView === 'AnalysisView'}
+              onClick={toggleAi}
+            >
+              <img
+                src={panelView === 'AnalysisView' ? IconAnalyseOn : IconAI}
+                alt='' aria-hidden='true'
+                className={`h-5 w-auto object-contain ${panelView === 'AnalysisView' ? '' : 'brightness-0 invert'}`}
+              />
+            </button>
+            <span
+              role='tooltip'
+              aria-hidden='true'
+              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+            >Analyse</span>
           </div>
 
           {/* Undo */}
@@ -1199,30 +1227,12 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             >Undo</span>
           </div>
 
-          {/* AI (ViewWindow toggle) */}
-          <div className='relative group'>
-            <button
-              type='button'
-              aria-label='Analyze'
-              className='neo-btn'
-              aria-pressed={panelView === 'AnalysisView'}
-              onClick={toggleAi}
-            >
-              <img src={IconAI} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
-            </button>
-            <span
-              role='tooltip'
-              aria-hidden='true'
-              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
-            >Analyze</span>
-          </div>
-
           {/* Reset */}
           <div className='relative group'>
             <button
               type='button'
               aria-label='Reset Game'
-              className='neo-btn'
+              className='neo-btn neo-btn-danger'
               onClick={handleReset}
             >
               <img src={IconReset} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
@@ -1239,7 +1249,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <button
               type='button'
               aria-label={isHotSeatMode ? 'New Game' : 'Leave Game'}
-              className='neo-btn'
+              className='neo-btn neo-btn-danger'
               onClick={handleLeave}
             >
               <img src={IconLeave} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain ml-1.5' />
