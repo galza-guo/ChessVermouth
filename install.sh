@@ -43,10 +43,16 @@ print_warning() {
 # Check if Node.js is installed
 check_nodejs() {
     print_status "Checking Node.js installation..."
-    
+
     if command -v node &> /dev/null; then
-        NODE_VERSION=$(node --version)
-        print_success "Node.js found: $NODE_VERSION"
+        NODE_VERSION_RAW=$(node --version)
+        NODE_VERSION=${NODE_VERSION_RAW#v}
+        NODE_MAJOR=${NODE_VERSION%%.*}
+        if [[ $NODE_MAJOR -lt 18 ]]; then
+            print_warning "Node.js $NODE_VERSION_RAW found, but ChessVermouth requires v18+"
+            return 1
+        fi
+        print_success "Node.js found: $NODE_VERSION_RAW"
         return 0
     else
         print_warning "Node.js not found"
@@ -112,7 +118,22 @@ EOF
 # Install dependencies
 install_dependencies() {
     print_status "Installing game dependencies..."
-    
+
+    # Install core server dependencies at repo root (TypeScript Stockfish bridge)
+    print_status "Installing core engine server dependencies..."
+    npm install
+
+    print_status "Building engine server..."
+    npm run build
+
+    # Fetch Stockfish binary if missing or user requests refresh
+    if [[ ! -x "engine/stockfish/stockfish" ]]; then
+        print_status "Downloading Stockfish engine (17.1)..."
+        node scripts/fetch-stockfish.mjs
+    else
+        print_status "Stockfish binary already present. Skipping download."
+    fi
+
     # Install server dependencies
     print_status "Installing server dependencies..."
     cd server && npm install && cd ..
