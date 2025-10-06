@@ -93,7 +93,16 @@ const config = {
     packageManager: 'apt',
     nodeInstallCmd: 'curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs'
   }
-}[platform] || config.darwin;
+}[platform] || {
+  // Fallback to macOS-style defaults if an unknown platform is detected
+  name: 'Unknown',
+  browserCommand: isWindows ? 'start' : (isLinux ? 'xdg-open' : 'open'),
+  notification: isWindows ? 'powershell' : (isLinux ? 'notify-send' : 'osascript'),
+  packageManager: isLinux ? 'apt' : 'brew',
+  nodeInstallCmd: isLinux
+    ? 'curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs'
+    : '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && brew install node'
+};
 
 // Colors for terminal output
 const colors = {
@@ -176,6 +185,13 @@ async function checkNodeJS() {
       }
     });
   });
+}
+
+function parseNodeMajor(vstr) {
+  if (!vstr) return 0;
+  const s = String(vstr).replace(/^v/, '');
+  const major = parseInt(s.split('.')[0], 10);
+  return Number.isFinite(major) ? major : 0;
 }
 
 async function checkNPM() {
@@ -306,7 +322,13 @@ async function installDependencies() {
   notify('ChessVermouth', 'Installing game dependencies');
   
   try {
-    // Install server dependencies
+    // Install root (engine server) dependencies and build latest engine
+    log('Installing engine server dependencies (root)...', 'blue');
+    execSync('npm install', { stdio: 'inherit' });
+    log('Building engine server...', 'blue');
+    execSync('npm run build', { stdio: 'inherit' });
+
+    // Install socket server dependencies
     log('Installing server dependencies...', 'blue');
     execSync('cd server && npm install', { stdio: 'inherit' });
     
@@ -326,6 +348,33 @@ async function installDependencies() {
 // Process management
 let serverProcess = null;
 let clientProcess = null;
+let engineProcess = null;
+
+async function httpGetJson(url, timeoutMs = 2000) {
+  return new Promise((resolve, reject) => {
+    try {
+      const isHttps = url.startsWith('https:');
+      const mod = require(isHttps ? 'https' : 'http');
+      const req = mod.get(url, (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          try {
+            resolve({ status: res.statusCode, json: JSON.parse(data || '{}') });
+          } catch (_) {
+            resolve({ status: res.statusCode, body: data });
+          }
+        });
+      });
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(new Error('timeout'));
+      });
+      req.on('error', reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
 
 // Dynamic port configuration
 let portConfig = {
@@ -372,7 +421,9 @@ async function startServer() {
         env: { 
           ...process.env, 
           PORT: portConfig.serverPort.toString(),
-          LAN_IP: lanIp
+          LAN_IP: lanIp,
+          ENGINE_HOST: '127.0.0.1',
+          ENGINE_PORT: '8080'
         }
       };
       
@@ -445,7 +496,7 @@ async function startServer() {
             
             req.end();
           }, 1000);
-          
+
           resolve();
         }
       });
@@ -531,10 +582,16 @@ async function startClient() {
       let opened = false;
       let fallbackTimer = null;
       const tryOpenFromOutput = (output) => {
-        // Try to extract actual Vite URL (handles auto-fallback ports). Prefer 'Local' line.
-        const urlMatch = output.match(/(http:\/\/[0-9A-Za-z\.-]+:[0-9]{2,5})/i);
-        if (urlMatch && urlMatch[1] && !opened) {
-          const url = urlMatch[1];
+        // Prefer "Network:" URL so share link matches what the frontend is actually using.
+        let url = null;
+        const netMatch = output.match(/Network:\s*(http:\/\/[0-9A-Za-z\.-]+:[0-9]{2,5})/i);
+        if (netMatch && netMatch[1]) {
+          url = netMatch[1];
+        } else {
+          const anyMatch = output.match(/(http:\/\/[0-9A-Za-z\.-]+:[0-9]{2,5})/i);
+          if (anyMatch && anyMatch[1]) url = anyMatch[1];
+        }
+        if (url && !opened) {
           // Sync client port from parsed URL if different
           const portFromUrl = parseInt(url.split(':').pop(), 10);
           if (Number.isFinite(portFromUrl) && portFromUrl !== portConfig.clientPort) {
@@ -598,8 +655,79 @@ async function startClient() {
   });
 }
 
+async function ensureStockfish() {
+  const bin = path.join(__dirname, 'engine', 'stockfish', 'stockfish');
+  try {
+    if (fs.existsSync(bin)) {
+      try {
+        fs.accessSync(bin, fs.constants.X_OK);
+        return true;
+      } catch (_) {
+        // Try to chmod if present but not executable
+        try { fs.chmodSync(bin, 0o755); return true; } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  try {
+    log('⬇️  Fetching Stockfish 17.1 binary...', 'blue');
+    execSync('node scripts/fetch-stockfish.mjs', { stdio: 'inherit', cwd: __dirname });
+    return true;
+  } catch (err) {
+    log('⚠️  Could not fetch Stockfish binary; engine will start without it', 'yellow');
+    return false;
+  }
+}
+
+async function startEngine(optional = true) {
+  try {
+    // Build latest engine server and ensure Stockfish is present
+    log('🔧 Building engine server (latest)...', 'blue');
+    execSync('npm run build', { stdio: 'inherit', cwd: __dirname });
+    await ensureStockfish();
+
+    // Start engine HTTP+WS server (8080)
+    const spawnOptions = {
+      cwd: __dirname,
+      stdio: 'pipe',
+      env: { ...process.env, PORT: '8080', HOST: '0.0.0.0' }
+    };
+    if (isWindows) spawnOptions.shell = true;
+    engineProcess = spawn('node', ['dist/server.js'], spawnOptions);
+    engineProcess.stdout.on('data', (d) => log(`Engine: ${String(d).trim()}`, 'magenta'));
+    engineProcess.stderr.on('data', (d) => log(`Engine error: ${String(d).trim()}`, 'red'));
+
+    // Health probe (non-blocking)
+    setTimeout(async () => {
+      try {
+        const res = await httpGetJson('http://127.0.0.1:8080/health', 1500);
+        if (res.status === 200) log('✅ Engine online (8080)', 'green');
+        else log(`⚠️  Engine responded with status ${res.status}`, 'yellow');
+      } catch (_) {
+        log('⚠️  Engine not responding; hints/analysis disabled', 'yellow');
+      }
+    }, 800);
+  } catch (err) {
+    if (!optional) {
+      log(`❌ Failed to start engine: ${err.message}`, 'red');
+      throw err;
+    } else {
+      log('⚠️  Skipping engine start (optional). Hints/analysis may be unavailable.', 'yellow');
+    }
+  }
+}
+
 async function startFullGame() {
   try {
+    // Warn if Node < 18 as server proxy requires global fetch
+    const nodeV = await checkNodeJS();
+    const major = parseNodeMajor(nodeV);
+    if (major < 18) {
+      log(`⚠️  Detected Node ${nodeV}. Node 18+ is recommended for full functionality.`, 'yellow');
+    }
+
+    // Try to start engine (optional). Do not block gameplay if it fails.
+    await startEngine(true);
+
     await startServer();
     await startClient();
     log('🎉 Chess game is ready! Enjoy playing!', 'green');
@@ -801,6 +929,10 @@ process.on('SIGINT', () => {
   if (clientProcess) {
     clientProcess.kill();
     log('Client stopped', 'blue');
+  }
+  if (engineProcess) {
+    engineProcess.kill();
+    log('Engine stopped', 'blue');
   }
   
   rl.close();
