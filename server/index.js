@@ -12,8 +12,8 @@ const { execSync } = require('child_process')
 
 // Use dynamic port from environment variable or default to 3001
 const PORT = process.env.PORT || 3001
-// Use dynamic client port from environment variable or default to 5173
-const CLIENT_PORT = process.env.CLIENT_PORT || 5173
+// Use dynamic client port from environment variable or default to 9518
+const CLIENT_PORT = process.env.CLIENT_PORT || 9518
 
 let x = 233
 

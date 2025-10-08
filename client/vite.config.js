@@ -6,8 +6,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ command, mode }) => {
   // Only try to access process.env during dev server, not during build
   const port = command === 'serve' && mode === 'development' 
-    ? (process?.env?.VITE_PORT ? parseInt(process.env.VITE_PORT) : 5173)
-    : 5173;
+    ? (process?.env?.VITE_PORT ? parseInt(process.env.VITE_PORT) : 9518)
+    : 9518;
     
   return {
     plugins: [react()],

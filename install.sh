@@ -243,7 +243,7 @@ main() {
     echo "• Double-clicking ChessVermouth in Applications"
     echo "• Running: ./chessvermouth.js"
     echo ""
-    echo "The game will open in your web browser at: http://localhost:5173"
+    echo "The game will open in your web browser at: http://localhost:9518"
     echo ""
     echo -e "${BLUE}Enjoy playing chess! ♟️${NC}"
     

@@ -62,8 +62,8 @@ function App() {
       : null
     if (Number.isFinite(fromLoc)) return fromLoc
     const envPort = import.meta.env.VITE_PORT
-    const n = envPort ? parseInt(envPort) : 5173
-    return Number.isFinite(n) ? n : 5173
+    const n = envPort ? parseInt(envPort) : 9518
+    return Number.isFinite(n) ? n : 9518
   }, [])
   // Optional engine server port (for Stockfish analysis server)
   const enginePort = useMemo(() => {

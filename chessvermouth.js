@@ -32,41 +32,28 @@ const isLinux = platform === 'linux';
 // defaults to 'npm' if not found
 async function findNpmCommand() {
   return new Promise((resolve) => {
-    // Try different npm command variations
-    const npmCommands = isWindows ? ['npm.cmd', 'npm'] : ['npm'];
-    
-    for (const cmd of npmCommands) {
-      exec(`which ${cmd}`, (error) => {
-        if (!error) {
-          resolve(cmd);
+    if (isWindows) {
+      exec('where npm', (err, stdout) => {
+        if (!err && stdout && stdout.trim()) {
+          resolve('npm');
           return;
         }
-      });
-    }
-    
-    // Fallback: try to execute npm directly
-    exec('npm --version', (error) => {
-      if (!error) {
-        resolve('npm');
-      } else {
-        // Last resort: check common Windows npm locations
-        if (isWindows) {
-          const commonPaths = [
-            'C:\\Program Files\\nodejs\\npm.cmd',
-            'C:\\Program Files (x86)\\nodejs\\npm.cmd',
-            `${process.env.APPDATA}\\npm\\npm.cmd`,
-            `${process.env.LOCALAPPDATA}\\npm\\npm.cmd`
-          ];
-          
-          for (const npmPath of commonPaths) {
-            if (fs.existsSync(npmPath)) {
-              resolve(npmPath);
-              return;
-            }
-          }
+        const commonPaths = [
+          'C:\\Program Files\\nodejs\\npm.cmd',
+          'C:\\Program Files (x86)\\nodejs\\npm.cmd',
+          `${process.env.APPDATA}\\npm\\npm.cmd`,
+          `${process.env.LOCALAPPDATA}\\npm\\npm.cmd`
+        ];
+        for (const npmPath of commonPaths) {
+          try { if (fs.existsSync(npmPath)) { resolve(npmPath); return; } } catch (_) {}
         }
-        resolve('npm'); // Final fallback
-      }
+        exec('npm --version', (e2) => { resolve(!e2 ? 'npm' : 'npm'); });
+      });
+      return;
+    }
+    exec('which npm', (err) => {
+      if (!err) { resolve('npm'); return; }
+      exec('npm --version', (e2) => { resolve(!e2 ? 'npm' : 'npm'); });
     });
   });
 }
@@ -124,7 +111,9 @@ function log(message, color = 'reset') {
 function notify(title, message) {
   if (isMacOS) {
     try {
-      execSync(`osascript -e 'display notification "${message}" with title "${title}" sound name "Glass"'`);
+      // Use argument form to avoid AppleScript parsing issues
+      const { spawnSync } = require('child_process');
+      spawnSync('osascript', ['-e', `display notification "${String(message).replace(/"/g, '\\"')}" with title "${String(title).replace(/"/g, '\\"')}" sound name "Glass"`], { stdio: 'ignore' });
     } catch (e) {
       // Fallback to console if notification fails
     }
@@ -172,6 +161,59 @@ function showBanner() {
   log('=====================================', 'bright');
   log(`Optimized for ${config.name}`, 'blue');
   log('', 'reset');
+}
+
+// RFC1918 LAN IP detection and URL opener helpers
+function getLanIpRFC1918() {
+  try {
+    const interfaces = require('os').networkInterfaces();
+    let firstExternal = null;
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          const ip = iface.address;
+          if (ip.startsWith('10.') || ip.startsWith('192.168.') || (ip.startsWith('172.') && (() => { const n = parseInt(ip.split('.')[1], 10); return n >= 16 && n <= 31; })())) {
+            return ip;
+          }
+          if (!firstExternal) firstExternal = ip;
+        }
+      }
+    }
+    return firstExternal || 'localhost';
+  } catch (_) {
+    return 'localhost';
+  }
+}
+
+function getLanIpsRFC1918() {
+  const ips = [];
+  try {
+    const interfaces = require('os').networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          const ip = iface.address;
+          if (
+            ip.startsWith('10.') ||
+            ip.startsWith('192.168.') ||
+            (ip.startsWith('172.') && (() => { const n = parseInt(ip.split('.')[1], 10); return n >= 16 && n <= 31; })())
+          ) {
+            ips.push(ip);
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  return ips.length ? ips : [];
+}
+
+function openUrl(url) {
+  const q = (s) => '"' + String(s).replace(/"/g, '\\"') + '"';
+  if (isWindows) {
+    exec(`start "" ${q(url)}`, { shell: true });
+  } else {
+    exec(`${config.browserCommand} ${q(url)}`);
+  }
 }
 
 // System checks
@@ -238,18 +280,13 @@ async function checkDependencies() {
   const nodeVersion = await checkNodeJS();
   const npmVersion = await checkNPM();
   
-  // Find available ports dynamically
-  log('🔍 Finding available ports...', 'blue');
-  const serverPort = await findAvailablePort(3001);
-  const clientPort = await findAvailablePort(5173);
-  
   const results = {
     node: nodeVersion,
     npm: npmVersion,
-    serverPort: serverPort,
-    clientPort: clientPort,
-    serverPortAvailable: serverPort !== null,
-    clientPortAvailable: clientPort !== null
+    serverPort: null,
+    clientPort: null,
+    serverPortAvailable: null,
+    clientPortAvailable: null
   };
   
   if (nodeVersion) {
@@ -262,18 +299,6 @@ async function checkDependencies() {
     log(`✅ npm: ${npmVersion}`, 'green');
   } else {
     log('❌ npm: Not installed', 'red');
-  }
-  
-  if (serverPort) {
-    log(`✅ Server port: ${serverPort} (available)`, 'green');
-  } else {
-    log('❌ No available server ports found (3001-3010)', 'red');
-  }
-  
-  if (clientPort) {
-    log(`✅ Client port: ${clientPort} (available)`, 'green');
-  } else {
-    log('❌ No available client ports found (5173-5182)', 'red');
   }
   
   log('', 'reset');
@@ -327,6 +352,13 @@ async function installDependencies() {
     execSync('npm install', { stdio: 'inherit' });
     log('Building engine server...', 'blue');
     execSync('npm run build', { stdio: 'inherit' });
+    // Fetch Stockfish engine binary
+    try {
+      log('Ensuring Stockfish engine binary is present...', 'blue');
+      execSync('node scripts/fetch-stockfish.mjs', { stdio: 'inherit' });
+    } catch (_) {
+      log('⚠️  Could not fetch Stockfish binary now; it will be attempted again at runtime', 'yellow');
+    }
 
     // Install socket server dependencies
     log('Installing server dependencies...', 'blue');
@@ -336,8 +368,21 @@ async function installDependencies() {
     log('Installing client dependencies...', 'blue');
     execSync('cd client && npm install', { stdio: 'inherit' });
     
-    log('✅ Dependencies installed successfully!', 'green');
-    notify('ChessVermouth', 'Dependencies installed successfully');
+    // Validate artifacts
+    const distServer = path.join(__dirname, 'dist', 'server.js');
+    const sfBin = path.join(__dirname, 'engine', 'stockfish', 'stockfish');
+    let ok = true;
+    if (!fs.existsSync(distServer)) { log('❌ Missing dist/server.js (engine server build failed)', 'red'); ok = false; }
+    if (!fs.existsSync(sfBin)) { log('⚠️  Stockfish binary not found; hints/analysis may be unavailable until fetched', 'yellow'); }
+    if (!fs.existsSync(path.join(__dirname, 'server', 'node_modules'))) { log('❌ Missing server/node_modules', 'red'); ok = false; }
+    if (!fs.existsSync(path.join(__dirname, 'client', 'node_modules'))) { log('❌ Missing client/node_modules', 'red'); ok = false; }
+
+    if (ok) {
+      log('✅ Dependencies installed successfully!', 'green');
+      notify('ChessVermouth', 'Dependencies installed successfully');
+    } else {
+      log('⚠️  Some components failed validation. Please review the messages above.', 'yellow');
+    }
     return true;
   } catch (error) {
     log(`❌ Dependency installation failed: ${error.message}`, 'red');
@@ -376,37 +421,161 @@ async function httpGetJson(url, timeoutMs = 2000) {
   });
 }
 
+async function probeServerRange(base = 3001, attempts = 10, timeoutMs = 800) {
+  for (let i = 0; i < attempts; i++) {
+    const port = base + i;
+    try {
+      const res = await httpGetJson(`http://127.0.0.1:${port}/server-info`, timeoutMs);
+      if (res.status === 200 && res.json && (res.json.lanIp || res.json.serverUrl)) {
+        return { port, info: res.json };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function probeEngineRange(base = 8080, attempts = 10, timeoutMs = 800) {
+  for (let i = 0; i < attempts; i++) {
+    const port = base + i;
+    try {
+      const res = await httpGetJson(`http://127.0.0.1:${port}/health`, timeoutMs);
+      if (res.status === 200) return { port };
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function probeClientRange(base = 9518, attempts = 10, timeoutMs = 800) {
+  for (let i = 0; i < attempts; i++) {
+    const port = base + i;
+    try {
+      const res = await httpGetJson(`http://127.0.0.1:${port}/`, timeoutMs);
+      // If we get any HTTP response, assume dev server is up
+      if (res && typeof res.status === 'number' && res.status > 0) {
+        return { port };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function checkSystemStatus() {
+  // Reset statuses
+  engineStatus = 'not-started';
+  serverStatus = 'not-started';
+  clientStatus = 'not-started';
+
+  // Node/npm
+  const nodeVersion = await checkNodeJS();
+  const npmVersion = await checkNPM();
+  if (nodeVersion) log(`✅ Node.js: ${nodeVersion}`, 'green'); else log('❌ Node.js: Not installed', 'red');
+  if (npmVersion) log(`✅ npm: ${npmVersion}`, 'green'); else log('❌ npm: Not installed', 'red');
+
+  // Probe running services
+  const [engine, server, client] = await Promise.all([
+    probeEngineRange(),
+    probeServerRange(),
+    probeClientRange()
+  ]);
+
+  if (engine) {
+    engineStatus = 'ready';
+    portConfig.enginePort = engine.port;
+    log(`✅ Engine detected on port ${engine.port}`, 'green');
+  } else {
+    log('ℹ️  Engine not detected on ports 8080-8089', 'yellow');
+  }
+  if (server) {
+    serverStatus = 'ready';
+    portConfig.serverPort = server.port;
+    const ip = (server.info && server.info.lanIp) ? server.info.lanIp : getLanIpRFC1918();
+    log(`✅ Server detected on port ${server.port} (LAN IP: ${ip})`, 'green');
+  } else {
+    log('ℹ️  Server not detected on ports 3001-3010', 'yellow');
+  }
+  if (client) {
+    clientStatus = 'ready';
+    portConfig.clientPort = client.port;
+    log(`✅ Frontend detected on port ${client.port}`, 'green');
+  } else {
+    log('ℹ️  Frontend not detected on ports 9518-9527', 'yellow');
+  }
+
+  // Print summary
+  log('', 'reset');
+  clearScreen();
+  showAsciiBanner();
+  printStatusSummary();
+}
+
 // Dynamic port configuration
 let portConfig = {
   serverPort: 3001,
-  clientPort: 5173
+  clientPort: 9518,
+  enginePort: 8080
 };
+
+let engineStatus = 'not-started'; // 'not-started' | 'starting' | 'ready' | 'unavailable'
+let serverStatus = 'not-started'; // 'not-started' | 'starting' | 'ready'
+let clientStatus = 'not-started'; // 'not-started' | 'starting' | 'ready'
+
+function printStatusSummary() {
+  const lanIps = getLanIpsRFC1918();
+  const primaryLan = lanIps[0] || 'localhost';
+  log('----------------------------------------', 'bright');
+  log('Status Summary', 'bright');
+  const engLabel = engineStatus === 'ready' ? 'Ready' : (engineStatus === 'unavailable' ? 'Unavailable' : (engineStatus === 'not-started' ? 'Not started' : 'Starting'));
+  const engColor = engineStatus === 'ready' ? 'green' : (engineStatus === 'unavailable' ? 'yellow' : (engineStatus === 'not-started' ? 'blue' : 'blue'));
+  log(`- Engine: port ${portConfig.enginePort} | ${engLabel}`, engColor);
+
+  const srvLabel = serverStatus === 'ready' ? 'Ready (bind 0.0.0.0)' : (serverStatus === 'starting' ? 'Starting' : 'Not started');
+  const srvColor = serverStatus === 'ready' ? 'green' : (serverStatus === 'starting' ? 'blue' : 'blue');
+  log(`- Server: port ${portConfig.serverPort} | ${srvLabel}`, srvColor);
+
+  const cliLabel = clientStatus === 'ready' ? 'Ready' : (clientStatus === 'starting' ? 'Starting' : 'Not started');
+  const cliColor = clientStatus === 'ready' ? 'green' : (clientStatus === 'starting' ? 'blue' : 'blue');
+  log(`- Client: port ${portConfig.clientPort} | ${cliLabel}`, cliColor);
+
+  log('- URLs:', 'cyan');
+  if (clientStatus === 'ready') {
+    log(`  Local:   http://localhost:${portConfig.clientPort}`, 'blue');
+    if (lanIps.length) {
+      for (const ip of lanIps) {
+        log(`  Network: http://${ip}:${portConfig.clientPort}/?server=${ip}`, 'blue');
+      }
+    } else {
+      log('  Network: (no LAN IP detected)', 'yellow');
+    }
+  } else {
+    log('  UI not started (run Option 1 or 4 to serve the frontend)', 'yellow');
+  }
+
+  // Server API info
+  if (serverStatus === 'ready') {
+    if (primaryLan && primaryLan !== 'localhost') {
+      log(`- Server API: http://${primaryLan}:${portConfig.serverPort}`, 'cyan');
+    } else {
+      log(`- Server API: http://localhost:${portConfig.serverPort}`, 'cyan');
+    }
+  }
+  log('----------------------------------------', 'bright');
+}
 
 async function startServer() {
   return new Promise(async (resolve, reject) => {
     try {
       const npmCmd = await findNpmCommand();
+      serverStatus = 'starting';
       // Ensure we pick an available server port right before starting
       const desiredServerPort = await findAvailablePort(portConfig.serverPort || 3001) || 3001;
       if (desiredServerPort !== portConfig.serverPort) {
         log(`ℹ️  Selected free server port ${desiredServerPort} (was ${portConfig.serverPort})`, 'blue');
         portConfig.serverPort = desiredServerPort;
       }
-      log(`🚀 Starting chess server on port ${portConfig.serverPort} using ${npmCmd}...`, 'yellow');
+      log(`🚀 Starting chess server on port ${portConfig.serverPort} using Node...`, 'yellow');
       
       // Get local network info for display
-      const os = require('os');
-      const interfaces = os.networkInterfaces();
-      let lanIp = 'localhost';
-      for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-          if (iface.family === 'IPv4' && !iface.internal && iface.address.startsWith('192.168.')) {
-            lanIp = iface.address;
-            break;
-          }
-        }
-        if (lanIp !== 'localhost') break;
-      }
+      const lanIp = getLanIpRFC1918();
       
       if (lanIp !== 'localhost') {
         log(`🌐 Detected LAN IP: ${lanIp}`, 'blue');
@@ -423,7 +592,7 @@ async function startServer() {
           PORT: portConfig.serverPort.toString(),
           LAN_IP: lanIp,
           ENGINE_HOST: '127.0.0.1',
-          ENGINE_PORT: '8080'
+          ENGINE_PORT: String(portConfig.enginePort)
         }
       };
       
@@ -432,71 +601,16 @@ async function startServer() {
         spawnOptions.shell = true;
       }
       
-      serverProcess = spawn(npmCmd, ['run', 'start'], spawnOptions);
+      serverProcess = spawn('node', ['index.js'], spawnOptions);
       let retrying = false;
-      
+
       serverProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        log(`Server: ${output.trim()}`, 'blue'); // Show all server output
-        
+        // Only emit a concise success line once
         if (output.includes('Server is online')) {
           log(`✅ Server started successfully on port ${portConfig.serverPort}!`, 'green');
-          // Extract LAN IP from server output
-          const lanIpMatch = output.match(/LAN IP for multiplayer: ([0-9.]+:[0-9]+)/);
-          if (lanIpMatch) {
-            log(`🌐 Server LAN address: ${lanIpMatch[1]}`, 'blue');
-            log(`📱 Other players should connect to: http://${lanIpMatch[1].split(':')[0]}:${portConfig.clientPort}?server=${lanIpMatch[1].split(':')[0]}`, 'cyan');
-          } else {
-            // Try to extract any IP address from the output
-            const anyIpMatch = output.match(/(\d+\.\d+\.\d+\.\d+):(\d+)/);
-            if (anyIpMatch && anyIpMatch[1] !== '127.0.0.1' && anyIpMatch[1] !== 'localhost') {
-              log(`🌐 Detected server IP: ${anyIpMatch[1]}:${anyIpMatch[2]}`, 'blue');
-              log(`📱 Other players should connect to: http://${anyIpMatch[1]}:${portConfig.clientPort}?server=${anyIpMatch[1]}`, 'cyan');
-            }
-          }
           notify('ChessVermouth', `Server is ready on port ${portConfig.serverPort}`);
-          
-          // Test network accessibility
-          setTimeout(() => {
-            const http = require('http');
-            const options = {
-              hostname: 'localhost',
-              port: portConfig.serverPort,
-              path: '/server-info',
-              method: 'GET',
-              timeout: 3000
-            };
-            
-            const req = http.request(options, (res) => {
-              let data = '';
-              res.on('data', (chunk) => {
-                data += chunk;
-              });
-              res.on('end', () => {
-                try {
-                  const serverInfo = JSON.parse(data);
-                  log(`✅ Server network info: LAN IP ${serverInfo.lanIp}:${serverInfo.port}`, 'green');
-                  if (serverInfo.lanIp && serverInfo.lanIp !== 'localhost') {
-                    log(`🌐 For LAN multiplayer: http://${serverInfo.lanIp}:${portConfig.clientPort}?server=${serverInfo.lanIp}`, 'cyan');
-                  }
-                } catch (e) {
-                  log('ℹ️  Server started but network info unavailable', 'yellow');
-                }
-              });
-            });
-            
-            req.on('error', (e) => {
-              log('⚠️  Could not verify server network status', 'yellow');
-            });
-            
-            req.on('timeout', () => {
-              req.destroy();
-              log('⚠️  Server network check timed out', 'yellow');
-            });
-            
-            req.end();
-          }, 1000);
-
+          serverStatus = 'ready';
           resolve();
         }
       });
@@ -553,8 +667,9 @@ async function startClient() {
   return new Promise(async (resolve, reject) => {
     try {
       const npmCmd = await findNpmCommand();
+      clientStatus = 'starting';
       // Ensure we pick an available client port right before starting
-      const desiredClientPort = await findAvailablePort(portConfig.clientPort || 5173) || 5173;
+      const desiredClientPort = await findAvailablePort(portConfig.clientPort || 9518) || 9518;
       if (desiredClientPort !== portConfig.clientPort) {
         log(`ℹ️  Selected free client port ${desiredClientPort} (was ${portConfig.clientPort})`, 'blue');
         portConfig.clientPort = desiredClientPort;
@@ -568,7 +683,8 @@ async function startClient() {
         env: { 
           ...process.env, 
           VITE_PORT: portConfig.clientPort.toString(),
-          VITE_SERVER_PORT: portConfig.serverPort.toString()
+          VITE_SERVER_PORT: portConfig.serverPort.toString(),
+          BROWSERSLIST_IGNORE_OLD_DATA: '1'
         }
       };
       
@@ -581,6 +697,7 @@ async function startClient() {
       
       let opened = false;
       let fallbackTimer = null;
+      const lanIp = getLanIpRFC1918();
       const tryOpenFromOutput = (output) => {
         // Prefer "Network:" URL so share link matches what the frontend is actually using.
         let url = null;
@@ -600,7 +717,12 @@ async function startClient() {
           opened = true;
           if (fallbackTimer) clearTimeout(fallbackTimer);
           setTimeout(() => {
-            exec(`${config.browserCommand} ${url}`);
+            if (lanIp && lanIp !== 'localhost') {
+              const lanUrl = `http://${lanIp}:${portConfig.clientPort}?server=${lanIp}`;
+              openUrl(lanUrl);
+            } else {
+              openUrl(url);
+            }
             notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
           }, 500);
           return true;
@@ -616,8 +738,10 @@ async function startClient() {
           if (!opened && !fallbackTimer) {
             fallbackTimer = setTimeout(() => {
               if (!opened) {
-                const url = `http://localhost:${portConfig.clientPort}`;
-                exec(`${config.browserCommand} ${url}`);
+                const url = (lanIp && lanIp !== 'localhost')
+                  ? `http://${lanIp}:${portConfig.clientPort}?server=${lanIp}`
+                  : `http://localhost:${portConfig.clientPort}`;
+                openUrl(url);
                 notify('ChessVermouth', `Game opened in browser on port ${portConfig.clientPort}!`);
                 opened = true;
               }
@@ -626,6 +750,7 @@ async function startClient() {
           if (output.toLowerCase().includes('local:') || openedNow) {
             log(`✅ Client started successfully on port ${portConfig.clientPort}!`, 'green');
             log(`🌐 Client URL: http://localhost:${portConfig.clientPort}`, 'blue');
+            clientStatus = 'ready';
             resolve();
           }
         }
@@ -647,6 +772,62 @@ async function startClient() {
       clientProcess.on('close', (code) => {
         if (code !== 0) {
           reject(new Error(`Client exited with code ${code}`));
+        }
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// Developer-mode server start (uses nodemon via npm start)
+async function startServerDev() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const npmCmd = await findNpmCommand();
+      const desiredServerPort = await findAvailablePort(portConfig.serverPort || 3001) || 3001;
+      if (desiredServerPort !== portConfig.serverPort) {
+        log(`ℹ️  Selected free server port ${desiredServerPort} (was ${portConfig.serverPort})`, 'blue');
+        portConfig.serverPort = desiredServerPort;
+      }
+      log(`🚀 Starting chess server on port ${portConfig.serverPort} using nodemon...`, 'yellow');
+
+      const lanIp = getLanIpRFC1918();
+
+      const spawnOptions = {
+        cwd: path.join(__dirname, 'server'),
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          PORT: portConfig.serverPort.toString(),
+          LAN_IP: lanIp,
+          ENGINE_HOST: '127.0.0.1',
+          ENGINE_PORT: String(portConfig.enginePort)
+        }
+      };
+      if (isWindows) spawnOptions.shell = true;
+
+      serverProcess = spawn(npmCmd, ['run', 'start'], spawnOptions);
+
+      serverProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        // Pass through dev logs but detect readiness
+        if (output.includes('Server is online')) {
+          log(`✅ Server (dev) started on port ${portConfig.serverPort}`, 'green');
+          notify('ChessVermouth', `Server ready on port ${portConfig.serverPort}`);
+          resolve();
+        }
+      });
+      serverProcess.stderr.on('data', (data) => {
+        log(`Server error: ${data}`, 'red');
+      });
+      serverProcess.on('error', (error) => {
+        log(`❌ Failed to start server (dev): ${error.message}`, 'red');
+        reject(error);
+      });
+      serverProcess.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Server (dev) exited with code ${code}`));
         }
       });
     } catch (error) {
@@ -685,33 +866,63 @@ async function startEngine(optional = true) {
     execSync('npm run build', { stdio: 'inherit', cwd: __dirname });
     await ensureStockfish();
 
-    // Start engine HTTP+WS server (8080)
+    // Pick an available engine port and start engine HTTP+WS server
+    const desiredEnginePort = await findAvailablePort(portConfig.enginePort || 8080) || 8080;
+    if (desiredEnginePort !== portConfig.enginePort) {
+      log(`ℹ️  Selected free engine port ${desiredEnginePort} (was ${portConfig.enginePort})`, 'blue');
+      portConfig.enginePort = desiredEnginePort;
+    }
+
     const spawnOptions = {
       cwd: __dirname,
       stdio: 'pipe',
-      env: { ...process.env, PORT: '8080', HOST: '0.0.0.0' }
+      env: { ...process.env, PORT: String(portConfig.enginePort), HOST: '0.0.0.0' }
     };
     if (isWindows) spawnOptions.shell = true;
     engineProcess = spawn('node', ['dist/server.js'], spawnOptions);
     engineProcess.stdout.on('data', (d) => log(`Engine: ${String(d).trim()}`, 'magenta'));
     engineProcess.stderr.on('data', (d) => log(`Engine error: ${String(d).trim()}`, 'red'));
 
-    // Health probe (non-blocking)
-    setTimeout(async () => {
-      try {
-        const res = await httpGetJson('http://127.0.0.1:8080/health', 1500);
-        if (res.status === 200) log('✅ Engine online (8080)', 'green');
-        else log(`⚠️  Engine responded with status ${res.status}`, 'yellow');
-      } catch (_) {
+    // Health probe with short retries to avoid premature warnings
+    engineStatus = 'starting';
+    await new Promise((resolve) => {
+      let attempts = 0;
+      const maxAttempts = 12; // ~6s total if intervalMs=500
+      const intervalMs = 500;
+      let announcedWait = false;
+      const timer = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await httpGetJson(`http://127.0.0.1:${portConfig.enginePort}/health`, 1000);
+          if (res.status === 200) {
+            clearInterval(timer);
+            engineStatus = 'ready';
+            log(`✅ Engine online (${portConfig.enginePort})`, 'green');
+            resolve(null);
+            return;
+          }
+        } catch (_) {
+          // ignore per-attempt errors
+        }
+        if (!announcedWait) {
+          announcedWait = true;
+          log('⏳ Waiting for engine to come online...', 'blue');
+        }
+      if (attempts >= maxAttempts) {
+        clearInterval(timer);
+        engineStatus = 'unavailable';
         log('⚠️  Engine not responding; hints/analysis disabled', 'yellow');
+        resolve(null);
       }
-    }, 800);
+    }, intervalMs);
+  });
   } catch (err) {
     if (!optional) {
       log(`❌ Failed to start engine: ${err.message}`, 'red');
       throw err;
     } else {
       log('⚠️  Skipping engine start (optional). Hints/analysis may be unavailable.', 'yellow');
+      engineStatus = 'unavailable';
     }
   }
 }
@@ -722,41 +933,47 @@ async function startFullGame() {
     const nodeV = await checkNodeJS();
     const major = parseNodeMajor(nodeV);
     if (major < 18) {
-      log(`⚠️  Detected Node ${nodeV}. Node 18+ is recommended for full functionality.`, 'yellow');
+      log(`❌ Node ${nodeV} detected. Node 18+ is required for LAN multiplayer (engine proxy needs global fetch).`, 'red');
+      notify('ChessVermouth', 'Node 18+ required for LAN multiplayer');
+      return;
     }
 
-    // Try to start engine (optional). Do not block gameplay if it fails.
-    await startEngine(true);
-
+    // Start engine and let it settle concurrently while bringing up server/client
+    const engineSettle = startEngine(true);
     await startServer();
     await startClient();
-    log('🎉 Chess game is ready! Enjoy playing!', 'green');
-    // Summarize access URLs using current client port and detected LAN IP
-    log(`📍 Game URL (Local): http://localhost:${portConfig.clientPort}`, 'blue');
-    try {
-      const interfaces = require('os').networkInterfaces();
-      let lanIp = null;
-      for (const name of Object.keys(interfaces)) {
-        for (const netIf of interfaces[name]) {
-          if (netIf.family === 'IPv4' && !netIf.internal) {
-            if (
-              netIf.address.startsWith('10.') ||
-              netIf.address.startsWith('192.168.') ||
-              (netIf.address.startsWith('172.') && (() => { const n = parseInt(netIf.address.split('.')[1], 10); return n >= 16 && n <= 31 })())
-            ) {
-              lanIp = netIf.address; break;
-            }
-          }
-        }
-        if (lanIp) break;
-      }
-      if (lanIp) {
-        log(`📡 Game URL (LAN):   http://${lanIp}:${portConfig.clientPort}/?server=${lanIp}`, 'blue');
-      }
-    } catch {}
+    // Wait for engine to be ready or unavailable
+    await engineSettle;
+    // Clear transient logs and show a concise status summary
+    clearScreen();
+    showAsciiBanner();
+    printStatusSummary();
   } catch (error) {
     log(`❌ Failed to start game: ${error.message}`, 'red');
     notify('ChessVermouth', 'Failed to start game');
+  }
+}
+
+async function startFullGameDev() {
+  try {
+    const nodeV = await checkNodeJS();
+    const major = parseNodeMajor(nodeV);
+    if (major < 18) {
+      log(`❌ Node ${nodeV} detected. Node 18+ is required for LAN multiplayer (engine proxy needs global fetch).`, 'red');
+      notify('ChessVermouth', 'Node 18+ required for LAN multiplayer');
+      return;
+    }
+
+    const engineSettle = startEngine(true);
+    await startServerDev();
+    await startClient();
+    await engineSettle;
+    clearScreen();
+    showAsciiBanner();
+    printStatusSummary();
+  } catch (error) {
+    log(`❌ Failed to start game (dev): ${error.message}`, 'red');
+    notify('ChessVermouth', 'Failed to start game (dev)');
   }
 }
 
@@ -783,7 +1000,7 @@ async function startHotSeatMode() {
       }
       
       // Ensure client dev port is available
-      const desiredClientPort = await findAvailablePort(portConfig.clientPort || 5173) || 5173;
+      const desiredClientPort = await findAvailablePort(portConfig.clientPort || 9518) || 9518;
       if (desiredClientPort !== portConfig.clientPort) {
         log(`ℹ️  Selected free client port ${desiredClientPort} (was ${portConfig.clientPort})`, 'blue');
         portConfig.clientPort = desiredClientPort;
@@ -806,7 +1023,7 @@ async function startHotSeatMode() {
           opened = true;
           if (fallbackTimer) clearTimeout(fallbackTimer);
           setTimeout(() => {
-            exec(`${config.browserCommand} ${url}`);
+            openUrl(url);
             notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
           }, 500);
           return true;
@@ -822,7 +1039,7 @@ async function startHotSeatMode() {
             fallbackTimer = setTimeout(() => {
               if (!opened) {
                 const url = `http://localhost:${portConfig.clientPort}?mode=hotseat`;
-                exec(`${config.browserCommand} ${url}`);
+                openUrl(url);
                 notify('ChessVermouth', 'Hot Seat Mode opened in browser!');
                 opened = true;
               }
@@ -880,10 +1097,11 @@ async function showMenu() {
   console.log('4️⃣  Launch Game Only');
   console.log('5️⃣  Check System Status');
   console.log('6️⃣  Install Dependencies');
-  console.log('7️⃣  Exit');
+  console.log('7️⃣  Play Chess Now (Developer Mode)');
+  console.log('8️⃣  Exit');
   console.log('');
   
-  const choice = await askQuestion('Choose an option (1-7): ');
+  const choice = await askQuestion('Choose an option (1-8): ');
   
   switch (choice) {
     case '1':
@@ -893,18 +1111,40 @@ async function showMenu() {
       await startHotSeatMode();
       break;
     case '3':
-      await startServer();
+      // Start server + engine, no client
+      await (async () => {
+        const nodeV = await checkNodeJS();
+        const major = parseNodeMajor(nodeV);
+        if (major < 18) {
+          log(`❌ Node ${nodeV} detected. Node 18+ is required for LAN multiplayer (engine proxy needs global fetch).`, 'red');
+          notify('ChessVermouth', 'Node 18+ required');
+          return;
+        }
+        const engineSettle = startEngine(true);
+        await startServer();
+        await engineSettle;
+        clearScreen();
+        showAsciiBanner();
+        printStatusSummary();
+      })();
       break;
     case '4':
+      // Start frontend only and show summary
       await startClient();
+      clearScreen();
+      showAsciiBanner();
+      printStatusSummary();
       break;
     case '5':
-      await checkDependencies();
+      await checkSystemStatus();
       break;
     case '6':
       await installDependencies();
       break;
     case '7':
+      await startFullGameDev();
+      break;
+    case '8':
       log('👋 Goodbye! Thanks for using ChessVermouth.', 'cyan');
       process.exit(0);
       break;
@@ -956,7 +1196,7 @@ async function main() {
     
     // Store dynamic ports
     portConfig.serverPort = deps.serverPort || 3001;
-    portConfig.clientPort = deps.clientPort || 5173;
+  portConfig.clientPort = deps.clientPort || 9518;
     
     if (!deps.node || !deps.npm) {
       log('⚠️  Node.js or npm not found', 'yellow');

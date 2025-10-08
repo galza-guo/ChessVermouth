@@ -53,7 +53,7 @@ function startClient() {
   setTimeout(() => {
     console.log('🌐 Opening browser...');
     const browserCmd = os.platform() === 'darwin' ? 'open' : 'start';
-    spawn(browserCmd, ['http://localhost:5173']);
+    spawn(browserCmd, ['http://localhost:9518']);
   }, 3000);
   
   return client;
@@ -101,7 +101,7 @@ setTimeout(() => {
   
   console.log('');
   console.log('🎉 ChessVermouth is running!');
-  console.log('📍 Game URL: http://localhost:5173');
+  console.log('📍 Game URL: http://localhost:9518');
   console.log('');
   console.log('Press Ctrl+C to stop both server and client');
 }, 2000);
