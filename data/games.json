@@ -1,0 +1,26 @@
+{
+  "games": {
+    "2025.10.10(01)": {
+      "id": "2025.10.10(01)",
+      "createdAt": "2025-10-10T10:58:19.117Z",
+      "updatedAt": "2025-10-10T10:58:19.121Z",
+      "status": "active",
+      "variant": "standard",
+      "players": {
+        "hostName": "Gallant",
+        "opponentName": null
+      },
+      "startFEN": "startpos",
+      "fen": "startpos",
+      "pgn": "",
+      "clocks": {
+        "whiteMs": 0,
+        "blackMs": 0
+      },
+      "moves": []
+    }
+  },
+  "counters": {
+    "2025.10.10": 1
+  }
+}

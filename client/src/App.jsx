@@ -6,6 +6,7 @@ import { Chess } from 'chess.js'
 import QRCode from 'qrcode'
 
 import { bb, bk, bn, bp, bq, br, wb, wk, wn, wp, wq, wr, move, check, capture, castle, gameOver } from './assets'
+import ResumeDialog from './components/ResumeDialog'
 import PromotionDialog from './components/PromotionDialog'
 import ConfirmDialog from './components/ConfirmDialog'
 import GVImage from './assets/images/G&V.webp'
@@ -109,6 +110,8 @@ function App() {
   const [promotionData, setPromotionData] = useState(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [serverInfo, setServerInfo] = useState(null)
+  // Resume modal (unfinished game)
+  const [resumeModal, setResumeModal] = useState({ open: false, game: null })
   // QR code state (shared to lobby renderer)
   const [isQrOpen, setIsQrOpen] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState(null)
@@ -122,6 +125,8 @@ function App() {
   // Optional player names (for labels)
   const [playerName, setPlayerName] = useState('')
   const [opponentName, setOpponentName] = useState('')
+  // Latest clock values from ControlPanel for snapshot and server persistence
+  const [clockLatest, setClockLatest] = useState({ whiteMs: 0, blackMs: 0 })
   // Emoji overlay bursts on/near the board
   const [emojiBursts, setEmojiBursts] = useState([])
   const sendEmoji = useCallback((src, label) => {
@@ -164,6 +169,15 @@ function App() {
     setClockResetNonce((n) => n + 1)
     setLeaveConfirmOpen(false)
   }
+
+  // --- localStorage helpers for session and snapshots ---
+  const readSession = useCallback(() => {
+    try { const raw = localStorage.getItem('cv:session'); return raw ? JSON.parse(raw) : null } catch { return null }
+  }, [])
+  const writeSession = useCallback((s) => { try { localStorage.setItem('cv:session', JSON.stringify(s)) } catch {} }, [])
+  const clearSession = useCallback(() => { try { localStorage.removeItem('cv:session') } catch {} }, [])
+  const writeSnapshot = useCallback((id, snap) => { try { localStorage.setItem(`cv:snap:${id}`, JSON.stringify(snap)) } catch {} }, [])
+  const clearSnapshot = useCallback((id) => { try { localStorage.removeItem(`cv:snap:${id}`) } catch {} }, [])
 
   const getMoves = async (square) => {
     if (isHotSeatMode) {
@@ -245,6 +259,20 @@ function App() {
           isStalemate: data.isStalemate
         }])
         setHistory(data.history)
+        // Tiny snapshot: fen/pgn/ply/updatedAt + last known clocks
+        try {
+          if (gameId) {
+            const snap = {
+              id: gameId,
+              updatedAt: data.updatedAt || new Date().toISOString(),
+              fen: data.fen || '',
+              pgn: data.pgn || '',
+              clocks: { whiteMs: clockLatest.whiteMs || 0, blackMs: clockLatest.blackMs || 0 },
+              ply: typeof data.ply === 'number' ? data.ply : (Array.isArray(data.history) ? data.history.length : 0)
+            }
+            writeSnapshot(gameId, snap)
+          }
+        } catch (_) {}
       }
 
       const handleTerminate = () => {
@@ -283,9 +311,53 @@ function App() {
       newSocket.on('color', setColor)
       newSocket.on('status', setStatus)
       newSocket.on('terminate', handleTerminate)
-      newSocket.on('gameId', setGameId)
+      newSocket.on('gameId', (gid) => {
+        setGameId(gid)
+        try {
+          if (playerName && typeof playerName === 'string' && playerName.trim()) {
+            writeSession({ gameId: gid, playerName: playerName.trim() })
+          }
+        } catch (_) {}
+      })
       newSocket.on('promotionRequired', handlePromotionRequired)
       newSocket.on('promotionComplete', handlePromotionComplete)
+      // Persistence/resume events
+      newSocket.on('unfinishedGames', ({ games }) => {
+        try {
+          if (readSession()) return
+          if (Array.isArray(games) && games.length > 0) {
+            // Show most recently updated unfinished game
+            const g = games[games.length - 1]
+            setResumeModal({ open: true, game: g })
+          }
+        } catch (_) {}
+      })
+      newSocket.on('resumed', ({ gameId: gid }) => {
+        console.log('Game resumed', gid)
+      })
+      newSocket.on('resumeError', (e) => {
+        console.warn('Resume error', e && e.error)
+      })
+      newSocket.on('gameFinished', ({ gameId: gid, result, finishedAt }) => {
+        try {
+          clearSession()
+          clearSnapshot(gid)
+          console.log(`Game ${gid} finished (${result}) at ${finishedAt}`)
+        } catch (_) {}
+      })
+      newSocket.on('gameDiscarded', ({ gameId: gid }) => {
+        if (resumeModal.open && resumeModal.game && resumeModal.game.id === gid) {
+          setResumeModal({ open: false, game: null })
+        }
+      })
+
+      // Auto-resume if there is a saved session
+      try {
+        const sess = readSession()
+        if (sess && sess.gameId) {
+          newSocket.emit('resume', { gameId: sess.gameId, playerName: sess.playerName || '' })
+        }
+      } catch (_) {}
       newSocket.on('disconnect', () => {
         handleTerminate()
       })
@@ -395,7 +467,8 @@ function App() {
     } else {
       // Network mode: existing logic
       if (turn === color[0]) {
-        socket.emit('move', { gameId: gameId, move: move })
+        const clocksPayload = { whiteMs: clockLatest.whiteMs || 0, blackMs: clockLatest.blackMs || 0 }
+        socket.emit('move', { gameId: gameId, move: move, clocks: clocksPayload })
       }
     }
   }
@@ -625,6 +698,7 @@ function App() {
             onRequestReset={() => setResetConfirmOpen(true)}
             onRequestLeave={() => setLeaveConfirmOpen(true)}
             onSendEmoji={sendEmoji}
+            onClockUpdate={setClockLatest}
           />
         </div>
       </main>
@@ -664,6 +738,27 @@ function App() {
           cancelText="Cancel"
           onConfirm={performLeave}
           onCancel={() => setLeaveConfirmOpen(false)}
+        />
+      )}
+
+      {/* Resume/Discard Prompt for unfinished game */}
+      {resumeModal.open && resumeModal.game && (
+        <ResumeDialog
+          game={resumeModal.game}
+          onResume={() => {
+            try {
+              const name = window.prompt('Enter your name (e.g., Gallant or Vermouth)') || ''
+              if (socket && resumeModal.game) {
+                socket.emit('resume', { gameId: resumeModal.game.id, playerName: name })
+                writeSession({ gameId: resumeModal.game.id, playerName: name })
+                setResumeModal({ open: false, game: null })
+              }
+            } catch (_) {}
+          }}
+          onDiscard={() => {
+            try { if (socket && resumeModal.game) socket.emit('discardGame', { gameId: resumeModal.game.id }) } catch (_) {}
+          }}
+          onStartNew={() => { setResumeModal({ open: false, game: null }) }}
         />
       )}
     </div>
@@ -892,7 +987,7 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
   )
 }
 
-function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji }) {
+function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate }) {
   // ViewWindow: versatile middle panel (MoveListView | AnalysisView | EmojiView)
   const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
@@ -934,6 +1029,11 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
     activeTurn,
     resetKey,
   })
+  // Expose latest clocks to parent for snapshot/server persistence
+  useEffect(() => {
+    try { if (typeof window !== 'undefined' && window.dispatchEvent) {} } catch (_) {}
+    try { if (typeof onClockUpdate === 'function') onClockUpdate({ whiteMs, blackMs }) } catch (_) {}
+  }, [whiteMs, blackMs])
 
   const msToParts = useCallback((ms) => {
     const total = Math.max(0, Math.floor(ms / 1000))
@@ -1802,6 +1902,13 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
                     const nameEl = document.getElementById('playerNameInput')
                     const val = nameEl && typeof nameEl.value === 'string' ? nameEl.value.trim() : ''
                     if (val && setPlayerName) setPlayerName(val)
+                    if (val) {
+                      const onceGameId = (gid) => {
+                        try { socket.emit('setName', { gameId: gid, name: val }) } catch (_) {}
+                        socket.off('gameId', onceGameId)
+                      }
+                      socket.on('gameId', onceGameId)
+                    }
                   } catch (_) {}
                   socket.emit('join')
                 }}>
@@ -1828,7 +1935,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 }
 
 //render the correct panel based on the game status
-function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji }) {
+function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji, onClockUpdate }) {
   // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
   return (
     <ControlPanel
@@ -1853,8 +1960,10 @@ function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gam
       serverPort={serverPort}
       enginePort={enginePort}
       onSendEmoji={onSendEmoji}
+      onClockUpdate={onClockUpdate}
     />
   )
 }
+
 
 export default App

@@ -3,6 +3,7 @@ const app = express()
 const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
+const db = require('./db')
 app.use(cors())
 app.use(express.json())
 
@@ -145,6 +146,9 @@ function getNetworkName() {
 }
 const NETWORK_NAME = getNetworkName()
 
+// init JSON database
+try { db.init() } catch (_) {}
+
 const server = http.createServer(app)
 
 const io = new Server(server, {
@@ -179,9 +183,20 @@ const sendPosition = (emitter, gameId) => {
     }
   }
 
+  // DB snapshot data
+  const rec = db.getGame(gameId)
+  const fen = chess.fen()
+  const pgn = chess.pgn({ maxWidth: 0, newline: '' })
+  const ply = chess.history().length
+  const updatedAt = rec ? rec.updatedAt : new Date().toISOString()
+
   emitter.emit('position',{
     position: chess.board(),
     turn: chess.turn(),
+    fen,
+    pgn,
+    ply,
+    updatedAt,
     history: chess.history({verbose: true}).map(move => {
       return {
         from: move.from,
@@ -204,11 +219,16 @@ const sessions = {}
 io.on('connection', (socket) => {
   // Utility: generate a random session id
   const genId = () => {
-    let id = ''
-    do {
-      id = Math.random().toString(36).slice(2, 8).toUpperCase()
-    } while (games[id])
-    return id
+    try {
+      return db.generateGameId()
+    } catch (_) {
+      // fallback if db fails
+      let id = ''
+      do {
+        id = Math.random().toString(36).slice(2, 8).toUpperCase()
+      } while (games[id])
+      return id
+    }
   }
 
   // Utility: find the first waiting game (hosted, 1 player)
@@ -260,6 +280,7 @@ io.on('connection', (socket) => {
         claimedNames: { Gallant: false, Vermouth: false },
         pendingPromotion: null
       }
+      try { db.createGameRecord({ id: gameId, startFEN: 'startpos' }) } catch (_) {}
       socket.emit('color', 'white')
       io.to(gameId).emit('status','waiting')
       sendPosition(io.to(gameId), gameId)
@@ -273,6 +294,8 @@ io.on('connection', (socket) => {
       socket.emit('color', 'black')
       games[gameId].status = 'ready'
       io.to(gameId).emit('status', 'ready')
+      // touch DB updatedAt
+      try { db.updateSnapshot(gameId, { fen: games[gameId].game.fen(), pgn: games[gameId].game.pgn({maxWidth:0,newline:''}) }) } catch (_) {}
       sendPosition(io.to(gameId), gameId)
     } else {
       // Game full
@@ -292,10 +315,25 @@ io.on('connection', (socket) => {
         games[gameId].claimedNames[name] = true
         // Broadcast globally so lobby clients (not in room) can update
         io.emit('nameClaims', { claimed: games[gameId].claimedNames })
+        // Persist player name to DB by seat
+        const seat = (games[gameId].players.host === socket.id) ? 'host' : (games[gameId].players.opponent === socket.id ? 'opponent' : null)
+        if (seat) { try { db.setPlayerName(gameId, seat, name) } catch (_) {} }
       }
     } catch (_) {
       // ignore
     }
+  })
+
+  // Set a free-form player name for the current seat
+  socket.on('setName', (payload) => {
+    try {
+      const { gameId, name } = payload || {}
+      if (!gameId || typeof name !== 'string') return
+      if (!games[gameId]) return
+      const seat = (games[gameId].players.host === socket.id) ? 'host' : (games[gameId].players.opponent === socket.id ? 'opponent' : null)
+      if (!seat) return
+      db.setPlayerName(gameId, seat, name)
+    } catch (_) {}
   })
 
   socket.on('move', (data) => {
@@ -326,7 +364,32 @@ io.on('connection', (socket) => {
               from: result.from
             })
           } else {
-            // Regular move - send position update
+            // Regular move - persist and send position update
+            try {
+              const chess = games[gameId].game
+              const fenAfter = chess.fen()
+              const pgn = chess.pgn({ maxWidth: 0, newline: '' })
+              const ts = new Date().toISOString()
+              const ply = chess.history().length
+              const san = result.san
+              db.appendMove(gameId, { ply, uci: move, san, fenAfter, ts })
+              // Update clocks if provided
+              if (data.clocks && typeof data.clocks === 'object') {
+                db.updateSnapshot(gameId, { fen: fenAfter, pgn, clocks: data.clocks })
+              } else {
+                db.updateSnapshot(gameId, { fen: fenAfter, pgn })
+              }
+              // If game over, mark finished
+              if (chess.isGameOver()) {
+                let resultMark = '1/2-1/2'
+                if (chess.isCheckmate()) {
+                  // side to move has no moves; opposite won
+                  resultMark = (chess.turn() === 'w') ? '0-1' : '1-0'
+                }
+                try { db.finishGame(gameId, resultMark) } catch (_) {}
+                io.to(gameId).emit('gameFinished', { gameId, result: resultMark, finishedAt: db.getGame(gameId)?.finishedAt || ts })
+              }
+            } catch (_) {}
             sendPosition(io.to(gameId), gameId)
           }
         } else {
@@ -342,6 +405,14 @@ io.on('connection', (socket) => {
   socket.on('reset', (gameId) => {
     if(games[gameId].status === 'ready') {
       games[gameId].game.reset()
+      // Reset DB snapshot to start
+      try {
+        const chess = games[gameId].game
+        db.updateSnapshot(gameId, { fen: chess.fen(), pgn: chess.pgn({maxWidth:0,newline:''}), clocks: { whiteMs: 0, blackMs: 0 } })
+        // Also clear moves array by recreating record moves
+        const rec = db.getGame(gameId)
+        if (rec) { rec.moves = []; db.flush() }
+      } catch (_) {}
       sendPosition(io.to(gameId), gameId)
     }
   })
@@ -349,6 +420,12 @@ io.on('connection', (socket) => {
   socket.on('undo', (gameId) => {
     if(games[gameId].status === 'ready') {
       games[gameId].game.undo()
+      try {
+        const rec = db.getGame(gameId)
+        if (rec && rec.moves && rec.moves.length > 0) { rec.moves.pop(); db.flush() }
+        const chess = games[gameId].game
+        db.updateSnapshot(gameId, { fen: chess.fen(), pgn: chess.pgn({maxWidth:0,newline:''}) })
+      } catch (_) {}
       sendPosition(io.to(gameId), gameId)
     }
   })
@@ -400,6 +477,7 @@ io.on('connection', (socket) => {
           socket.emit('terminate')
         }
       })
+      // keep DB record for unfinished game; only clear memory
       delete games[gameId]
       //check is socket is player
     } else if (games[gameId].players.opponent === socket.id) {
@@ -411,6 +489,91 @@ io.on('connection', (socket) => {
       socket.leave(gameId)
       socket.emit('terminate')
     }
+  })
+
+  // Resume a game (client provides gameId and optional playerName)
+  socket.on('resume', (payload) => {
+    try {
+      const { gameId, playerName } = payload || {}
+      if (!gameId || typeof gameId !== 'string') {
+        socket.emit('resumeError', { error: 'Invalid gameId' })
+        return
+      }
+      const rec = db.getGame(gameId)
+      if (!rec) {
+        socket.emit('resumeError', { error: 'Game not found' })
+        return
+      }
+      if (rec.status === 'finished') {
+        socket.emit('gameFinished', { gameId, result: rec.result || '1/2-1/2', finishedAt: rec.finishedAt || rec.updatedAt })
+        return
+      }
+      // Ensure in-memory game exists with history applied
+      if (!games[gameId]) {
+        const chess = rec.startFEN && rec.startFEN !== 'startpos' ? new Chess(rec.startFEN) : new Chess()
+        try {
+          for (const m of rec.moves) {
+            chess.move(m.uci)
+          }
+        } catch (_) {}
+        games[gameId] = {
+          game: chess,
+          numPlayers: 0,
+          players: { host: '', opponent: '' },
+          status: 'waiting',
+          claimedNames: { Gallant: false, Vermouth: false },
+          pendingPromotion: null
+        }
+      }
+      // Seat this socket based on name if possible
+      const g = games[gameId]
+      const hostTaken = !!g.players.host
+      const oppTaken = !!g.players.opponent
+      let seat = null
+      if (playerName && rec.players) {
+        if (!hostTaken && rec.players.hostName && playerName === rec.players.hostName) seat = 'host'
+        else if (!oppTaken && rec.players.opponentName && playerName === rec.players.opponentName) seat = 'opponent'
+      }
+      if (!seat) {
+        seat = !hostTaken ? 'host' : (!oppTaken ? 'opponent' : 'spectator')
+      }
+      if (seat !== 'spectator') {
+        g.players[seat] = socket.id
+        g.numPlayers = (g.players.host ? 1 : 0) + (g.players.opponent ? 1 : 0)
+      }
+      sessions[socket.id] = gameId
+      socket.join(gameId)
+      if (seat === 'host') socket.emit('color', 'white')
+      if (seat === 'opponent') socket.emit('color', 'black')
+      g.status = g.numPlayers === 2 ? 'ready' : 'waiting'
+      io.to(gameId).emit('status', g.status)
+      socket.emit('resumed', { gameId, status: g.status })
+      sendPosition(io.to(gameId), gameId)
+    } catch (e) {
+      socket.emit('resumeError', { error: 'Resume failed' })
+    }
+  })
+
+  // Discard an unfinished game
+  socket.on('discardGame', (payload) => {
+    try {
+      const { gameId } = payload || {}
+      const rec = db.getGame(gameId)
+      if (!rec) return
+      if (rec.status === 'finished') return
+      db.deleteGame(gameId)
+      // If in-memory, clean up room
+      if (games[gameId]) {
+        io.in(gameId).fetchSockets().then((sockets) => {
+          for (let s of sockets) {
+            s.leave(gameId)
+            s.emit('terminate')
+          }
+        })
+        delete games[gameId]
+      }
+      socket.emit('gameDiscarded', { gameId })
+    } catch (_) {}
   })
 
   socket.on('disconnect', () => {
@@ -446,6 +609,15 @@ io.on('connection', (socket) => {
 
   // Send any existing claimed names for a waiting game to the newly connected client
   emitCurrentClaimsTo(socket)
+  // Also inform about unfinished games in the database (for resume UX)
+  try {
+    const unfinished = db.listUnfinished()
+      .map((g) => ({ id: g.id, createdAt: g.createdAt, updatedAt: g.updatedAt, moves: (g.moves || []).length, clocks: g.clocks }))
+      .sort((a,b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''))
+    if (unfinished.length > 0) {
+      socket.emit('unfinishedGames', { games: unfinished })
+    }
+  } catch (_) {}
 })
 
 app.get('/moves', (req, res) => {
