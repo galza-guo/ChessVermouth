@@ -18,9 +18,29 @@
         "blackMs": 0
       },
       "moves": []
+    },
+    "2025.11.20(01)": {
+      "id": "2025.11.20(01)",
+      "createdAt": "2025-11-20T13:10:30.312Z",
+      "updatedAt": "2025-11-20T13:10:30.319Z",
+      "status": "active",
+      "variant": "standard",
+      "players": {
+        "hostName": "Gallant",
+        "opponentName": null
+      },
+      "startFEN": "startpos",
+      "fen": "startpos",
+      "pgn": "",
+      "clocks": {
+        "whiteMs": 0,
+        "blackMs": 0
+      },
+      "moves": []
     }
   },
   "counters": {
-    "2025.10.10": 1
+    "2025.10.10": 1,
+    "2025.11.20": 1
   }
 }
