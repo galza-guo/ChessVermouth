@@ -37,10 +37,49 @@
         "blackMs": 0
       },
       "moves": []
+    },
+    "2025.11.20(02)": {
+      "id": "2025.11.20(02)",
+      "createdAt": "2025-11-20T13:41:06.782Z",
+      "updatedAt": "2025-11-20T13:41:06.785Z",
+      "status": "active",
+      "variant": "standard",
+      "players": {
+        "hostName": "Gallant",
+        "opponentName": null
+      },
+      "startFEN": "startpos",
+      "fen": "startpos",
+      "pgn": "",
+      "clocks": {
+        "whiteMs": 0,
+        "blackMs": 0
+      },
+      "moves": []
+    },
+    "2025.11.21(01)": {
+      "id": "2025.11.21(01)",
+      "createdAt": "2025-11-21T09:15:12.763Z",
+      "updatedAt": "2025-11-21T09:15:12.767Z",
+      "status": "active",
+      "variant": "standard",
+      "players": {
+        "hostName": "Gallant",
+        "opponentName": null
+      },
+      "startFEN": "startpos",
+      "fen": "startpos",
+      "pgn": "",
+      "clocks": {
+        "whiteMs": 0,
+        "blackMs": 0
+      },
+      "moves": []
     }
   },
   "counters": {
     "2025.10.10": 1,
-    "2025.11.20": 1
+    "2025.11.20": 2,
+    "2025.11.21": 1
   }
 }

@@ -518,6 +518,7 @@ let portConfig = {
 let engineStatus = 'not-started'; // 'not-started' | 'starting' | 'ready' | 'unavailable'
 let serverStatus = 'not-started'; // 'not-started' | 'starting' | 'ready'
 let clientStatus = 'not-started'; // 'not-started' | 'starting' | 'ready'
+let clientMode = 'network'; // 'network' | 'hotseat'
 
 function printStatusSummary() {
   const lanIps = getLanIpsRFC1918();
@@ -538,10 +539,13 @@ function printStatusSummary() {
 
   log('- URLs:', 'cyan');
   if (clientStatus === 'ready') {
-    log(`  Local:   http://localhost:${portConfig.clientPort}`, 'blue');
+    const isHotSeatClient = clientMode === 'hotseat';
+    const localSuffix = isHotSeatClient ? '?mode=hotseat' : '';
+    log(`  Local:   http://localhost:${portConfig.clientPort}${localSuffix}`, 'blue');
     if (lanIps.length) {
       for (const ip of lanIps) {
-        log(`  Network: http://${ip}:${portConfig.clientPort}/?server=${ip}`, 'blue');
+        const networkSuffix = isHotSeatClient ? '?mode=hotseat' : `/?server=${ip}`;
+        log(`  Network: http://${ip}:${portConfig.clientPort}${networkSuffix}`, 'blue');
       }
     } else {
       log('  Network: (no LAN IP detected)', 'yellow');
@@ -668,6 +672,7 @@ async function startClient() {
     try {
       const npmCmd = await findNpmCommand();
       clientStatus = 'starting';
+      clientMode = 'network';
       // Ensure we pick an available client port right before starting
       const desiredClientPort = await findAvailablePort(portConfig.clientPort || 9518) || 9518;
       if (desiredClientPort !== portConfig.clientPort) {
@@ -966,7 +971,7 @@ async function startFullGameDev() {
 
     const engineSettle = startEngine(true);
     await startServerDev();
-    await startClient();
+    await startHotSeatMode();
     await engineSettle;
     clearScreen();
     showAsciiBanner();
@@ -981,6 +986,8 @@ async function startHotSeatMode() {
   return new Promise(async (resolve, reject) => {
     try {
       const npmCmd = await findNpmCommand();
+      clientStatus = 'starting';
+      clientMode = 'hotseat';
       log(`🎮 Starting Hot Seat Mode on port ${portConfig.clientPort} using ${npmCmd}...`, 'yellow');
       notify('ChessVermouth', 'Starting Hot Seat Mode');
       
@@ -1046,6 +1053,7 @@ async function startHotSeatMode() {
             }, 1500);
           }
           if (output.toLowerCase().includes('local:') || openedNow) {
+            clientStatus = 'ready';
             log(`✅ Hot Seat Mode ready on port ${portConfig.clientPort}!`, 'green');
             resolve();
           }

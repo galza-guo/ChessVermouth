@@ -26,6 +26,8 @@ const sounds = { move, check, capture, castle, gameOver }
 // Detect hot seat mode from URL parameter
 const urlParams = new URLSearchParams(window.location.search);
 const isHotSeatMode = urlParams.get('mode') === 'hotseat';
+// Frontend dev server indicator (Vite exposes this flag)
+const isDevMode = import.meta.env.DEV === true;
 // Prefer explicit ?server=, then env, then current host if not localhost, else fallback to 'localhost'
 const inferredHost = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
   ? window.location.hostname
@@ -604,6 +606,7 @@ function App() {
             <img src="/Vermouth's Gambit (logo only).png" alt="Vermouth's Gambit logo" className='h-6 w-6 rounded' />
             <span className='text-lg font-semibold tracking-tight'>Vermouth's Gambit</span>
             <span className='badge'>{isHotSeatMode ? 'Hot Seat' : 'Online'}</span>
+            {isDevMode && <span className='badge badge-dev'>Dev</span>}
             {status === 'waiting' && <span className='badge-warn'>Waiting</span>}
           </div>
           <div className='flex items-center gap-3 text-xs text-zinc-400'>
