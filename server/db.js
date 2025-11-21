@@ -112,6 +112,23 @@ function listUnfinished() {
   return Object.values(db.games).filter((g) => g.status !== 'finished');
 }
 
+function listGames(options = {}) {
+  if (!loaded) init();
+  const status = options.status || 'all';
+  let items = Object.values(db.games);
+  if (status === 'finished') {
+    items = items.filter((g) => g.status === 'finished');
+  } else if (status === 'active') {
+    items = items.filter((g) => g.status !== 'finished');
+  }
+  items.sort((a, b) => {
+    const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    return tb - ta;
+  });
+  return items.map((g) => ({ ...g }));
+}
+
 function appendMove(id, { ply, uci, san, fenAfter, ts }) {
   const g = getGame(id);
   if (!g) throw new Error('game not found');
@@ -122,7 +139,7 @@ function appendMove(id, { ply, uci, san, fenAfter, ts }) {
   flush();
 }
 
-function updateSnapshot(id, { fen, pgn, clocks }) {
+function updateSnapshot(id, { fen, pgn, clocks, moves }) {
   const g = getGame(id);
   if (!g) throw new Error('game not found');
   if (typeof fen === 'string') g.fen = fen;
@@ -132,6 +149,15 @@ function updateSnapshot(id, { fen, pgn, clocks }) {
     if (Number.isFinite(clocks.whiteMs)) c.whiteMs = clocks.whiteMs;
     if (Number.isFinite(clocks.blackMs)) c.blackMs = clocks.blackMs;
     g.clocks = c;
+  }
+  if (Array.isArray(moves)) {
+    g.moves = moves.map((m, idx) => ({
+      ply: typeof m.ply === 'number' ? m.ply : idx + 1,
+      uci: m.uci || '',
+      san: m.san || '',
+      fenAfter: m.fenAfter || undefined,
+      ts: m.ts || new Date().toISOString()
+    }));
   }
   g.updatedAt = new Date().toISOString();
   flush();
@@ -171,10 +197,10 @@ module.exports = {
   createGameRecord,
   getGame,
   listUnfinished,
+  listGames,
   appendMove,
   updateSnapshot,
   finishGame,
   deleteGame,
   setPlayerName,
 };
-

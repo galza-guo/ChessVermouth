@@ -22,6 +22,7 @@ import IconLeave from './assets/icons/Leave.png'
 
 const icons = { bb, bk, bn, bp, bq, br, wb, wk, wn, wp, wq, wr }
 const sounds = { move, check, capture, castle, gameOver }
+const MIN_HISTORY_MOVES = 6
 
 // Detect hot seat mode from URL parameter
 const urlParams = new URLSearchParams(window.location.search);
@@ -79,20 +80,18 @@ function App() {
   const [hotSeatGame, setHotSeatGame] = useState(null)
   const [hotSeatCurrentPlayer, setHotSeatCurrentPlayer] = useState('w')
 
-  // Initialize hot seat game on mount if in hot seat mode
+  // Always initialize local Chess instance for hot seat logic
   useEffect(() => {
-    if (isHotSeatMode) {
-      console.log('Initializing hot seat game...')
-      try {
-        const game = new Chess()
-        setHotSeatGame(game)
-        setHotSeatCurrentPlayer(game.turn())
-        console.log('Hot seat game initialized successfully')
-      } catch (error) {
-        console.error('Failed to initialize hot seat game:', error)
-      }
+    console.log('Initializing hot seat game…')
+    try {
+      const game = new Chess()
+      setHotSeatGame(game)
+      setHotSeatCurrentPlayer(game.turn())
+      console.log('Hot seat game initialized successfully')
+    } catch (error) {
+      console.error('Failed to initialize hot seat game:', error)
     }
-  }, []) // Only run once on mount
+  }, [])
 
   const [board, setBoard] = useState(Array(8).fill([null, null, null, null, null, null, null, null]))
   const [availableMoves, setAvailableMoves] = useState([])
@@ -132,8 +131,20 @@ function App() {
   const [clockLatest, setClockLatest] = useState({ whiteMs: 0, blackMs: 0 })
   const [saveStatus, setSaveStatus] = useState({ state: 'idle', timestamp: null })
   const saveTimerRef = useRef(null)
+  const clockLatestRef = useRef(clockLatest)
+  const playerNameRef = useRef(playerName)
+  const gameIdRef = useRef(gameId)
+  const connectingRef = useRef(false)
+  useEffect(() => { clockLatestRef.current = clockLatest }, [clockLatest])
+  useEffect(() => { playerNameRef.current = playerName }, [playerName])
+  useEffect(() => { gameIdRef.current = gameId }, [gameId])
   // Emoji overlay bursts on/near the board
   const [emojiBursts, setEmojiBursts] = useState([])
+  const [isContextMenuOpen, setIsContextMenuOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [historyItems, setHistoryItems] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState(null)
   const sendEmoji = useCallback((src, label) => {
     // Add a transient emoji overlay inside the board area
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -172,12 +183,48 @@ function App() {
       </span>
     )
   }, [saveStatus])
+
+  const fetchHistoryGames = useCallback(async () => {
+    setHistoryLoading(true)
+    setHistoryError(null)
+    try {
+      const res = await fetch(`http://${serverIp}:${serverPort}/games?status=all&limit=100`)
+      if (!res.ok) throw new Error('Failed to load history')
+      const data = await res.json()
+      setHistoryItems(Array.isArray(data.games) ? data.games : [])
+    } catch (err) {
+      setHistoryError(err.message || 'Failed to load history')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [serverIp, serverPort])
   // When a confirmation dialog opens, collapse the floating control panel
   useEffect(() => {
     if (resetConfirmOpen || leaveConfirmOpen) {
       setIsPanelOpen(false)
     }
   }, [resetConfirmOpen, leaveConfirmOpen])
+
+  useEffect(() => {
+    if (!isContextMenuOpen) return
+    const onClick = (e) => {
+      const menu = document.querySelector('[data-context-menu="1"]')
+      if (menu && !menu.contains(e.target)) {
+        setIsContextMenuOpen(false)
+      }
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIsContextMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    document.addEventListener('touchstart', onClick, { passive: true })
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onClick)
+      document.removeEventListener('touchstart', onClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [isContextMenuOpen])
   const performReset = () => {
     if (isHotSeatMode && hotSeatGame) {
       hotSeatGame.reset()
@@ -211,6 +258,7 @@ function App() {
   const clearSession = useCallback(() => { try { localStorage.removeItem('cv:session') } catch {} }, [])
   const writeSnapshot = useCallback((id, snap) => { try { localStorage.setItem(`cv:snap:${id}`, JSON.stringify(snap)) } catch {} }, [])
   const clearSnapshot = useCallback((id) => { try { localStorage.removeItem(`cv:snap:${id}`) } catch {} }, [])
+  const HOTSEAT_SERVER_KEY = 'cv:hotseat-server-id'
   const HOTSEAT_SNAPSHOT_KEY = 'cv:hotseat-resume'
   const readHotSeatSnapshot = useCallback(() => {
     try { const raw = localStorage.getItem(HOTSEAT_SNAPSHOT_KEY); return raw ? JSON.parse(raw) : null } catch { return null }
@@ -219,6 +267,12 @@ function App() {
     try { localStorage.setItem(HOTSEAT_SNAPSHOT_KEY, JSON.stringify(payload)) } catch {}
   }, [])
   const clearHotSeatSnapshot = useCallback(() => { try { localStorage.removeItem(HOTSEAT_SNAPSHOT_KEY) } catch {} }, [])
+  const readHotSeatServerId = useCallback(() => {
+    try { return localStorage.getItem(HOTSEAT_SERVER_KEY) || null } catch { return null }
+  }, [])
+  const writeHotSeatServerId = useCallback((id) => {
+    try { localStorage.setItem(HOTSEAT_SERVER_KEY, id || '') } catch {}
+  }, [])
   const persistHotSeatSnapshot = useCallback((gameInstance) => {
     const game = gameInstance || hotSeatGame
     if (!game) return
@@ -254,6 +308,52 @@ function App() {
       saveTimerRef.current = null
     }, 300)
   }, [hotSeatGame, clockLatest, readHotSeatSnapshot, writeHotSeatSnapshot])
+
+  const pushSnapshotToServer = useCallback(async (gameInstance, overrideGameId) => {
+    if (!gameInstance) return
+    const movesCount = gameInstance.history().length
+    const targetId = overrideGameId || gameIdRef.current
+    if (!targetId && (!isHotSeatMode || movesCount < MIN_HISTORY_MOVES)) {
+      return
+    }
+    let gid = targetId
+    if (!gid && isHotSeatMode && movesCount >= MIN_HISTORY_MOVES) {
+      try {
+        const res = await fetch(`http://${serverIp}:${serverPort}/games`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startFEN: 'startpos' })
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data && data.game && data.game.id) {
+            gid = data.game.id
+            setGameId(gid)
+            writeHotSeatServerId(gid)
+          }
+        }
+      } catch (_) {}
+    }
+    if (!gid) return
+    try {
+      const historyVerbose = gameInstance.history({ verbose: true })
+      const movesPayload = historyVerbose.map((m, idx) => ({
+        ply: idx + 1,
+        uci: `${m.from}${m.to}${m.promotion || ''}`,
+        san: m.san || ''
+      }))
+      await fetch(`http://${serverIp}:${serverPort}/games/${gid}/snapshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fen: gameInstance.fen(),
+          pgn: gameInstance.pgn({ maxWidth: 0, newline: '' }),
+          clocks: { whiteMs: clockLatestRef.current.whiteMs || 0, blackMs: clockLatestRef.current.blackMs || 0 },
+          moves: movesPayload
+        })
+      })
+    } catch (_) {}
+  }, [serverIp, serverPort, isHotSeatMode, setGameId, writeHotSeatServerId])
   const hydrateHotSeatGameFromSnapshot = useCallback((snapshot) => {
     if (!snapshot) return null
     const initialFen = snapshot.startFEN && snapshot.startFEN !== 'startpos' ? snapshot.startFEN : undefined
@@ -275,6 +375,33 @@ function App() {
     return resumedGame
   }, [])
 
+  const hydrateServerRecord = useCallback((record) => {
+    if (!record) return null
+    const startFENValue = record.startFEN && record.startFEN !== 'startpos' ? record.startFEN : undefined
+    const chess = new Chess(startFENValue)
+    const pgn = record.pgn
+    if (pgn) {
+      try {
+        chess.loadPgn(pgn)
+      } catch (_) {
+        // fallback below
+      }
+    }
+    if (!record.pgn || chess.history().length !== (Array.isArray(record.moves) ? record.moves.length : chess.history().length)) {
+      if (Array.isArray(record.moves)) {
+        chess.reset()
+        if (startFENValue) chess.load(startFENValue)
+        for (const mv of record.moves) {
+          const uci = (mv && mv.uci) ? mv.uci : ''
+          if (uci) {
+            try { chess.move(uci) } catch (_) {}
+          }
+        }
+      }
+    }
+    return chess
+  }, [])
+
   useEffect(() => {
     if (!isHotSeatMode || hotSeatResumeChecked) return
     setHotSeatResumeChecked(true)
@@ -282,23 +409,24 @@ function App() {
     if (stored) {
       setResumeModal({ open: true, game: stored })
     }
-  }, [isHotSeatMode, hotSeatResumeChecked, readHotSeatSnapshot])
+    const existing = readHotSeatServerId()
+    if (existing) setGameId(existing)
+  }, [isHotSeatMode, hotSeatResumeChecked, readHotSeatSnapshot, readHotSeatServerId])
 
   const getMoves = async (square) => {
+    // Hot seat mode: use local chess.js for move validation
     if (isHotSeatMode) {
-      // Hot seat mode: use local chess.js for move validation
       if (hotSeatGame && hotSeatGame.turn() === hotSeatCurrentPlayer[0]) {
-        let moves = hotSeatGame.moves({square: square, verbose: true})
-        setAvailableMoves(moves.map(move => move.to))
+        const moves = hotSeatGame.moves({ square, verbose: true })
+        setAvailableMoves(moves.map((move) => move.to))
       }
-    } else {
-      // Network mode: existing logic
-      if (turn === color[0]) {
-        let result = await fetch(`http://${serverIp}:${serverPort}/moves?square=${square}&gameId=${gameId}`)
-        let data = await result.json()
-        let moves = data.moves.map(move => move.to)
-        setAvailableMoves(moves)
-      }
+    }
+    // Network mode: existing logic
+    if (!isHotSeatMode && turn === color[0]) {
+      let result = await fetch(`http://${serverIp}:${serverPort}/moves?square=${square}&gameId=${gameId}`)
+      let data = await result.json()
+      let moves = data.moves.map(move => move.to)
+      setAvailableMoves(moves)
     }
   }
 
@@ -455,7 +583,8 @@ function App() {
 
     console.log('Board state updated successfully')
     persistHotSeatSnapshot(game)
-  }, [hotSeatGame, persistHotSeatSnapshot])
+    pushSnapshotToServer(game)
+  }, [hotSeatGame, persistHotSeatSnapshot, pushSnapshotToServer])
 
   useEffect(() => {
     updateHotSeatPositionRef.current = updateHotSeatPosition
@@ -469,7 +598,7 @@ function App() {
   }, [isHotSeatMode, hotSeatGameOver, clearHotSeatSnapshot])
 
   useEffect(() => {
-    if (!isHotSeatMode || !hotSeatGame) return
+    if (!hotSeatGame) return
     console.log('Hot seat mode: Initializing game...')
     try {
       console.log('Initial board:', hotSeatGame.board())
@@ -486,9 +615,10 @@ function App() {
   }, [isHotSeatMode, hotSeatGame, readHotSeatSnapshot])
 
   useEffect(() => {
-    if (isHotSeatMode) return
-
-    // Network mode: connect to socket server
+    if (socket || connectingRef.current) return
+    connectingRef.current = true
+    let cancelled = false
+    // Connect to socket server
     const connectSocket = async () => {
       const io = await import('socket.io-client')
       // Try env/default then a small range to handle occupied ports
@@ -521,8 +651,16 @@ function App() {
         }
       }
 
-      if (!connectedSocket) return
+      if (!connectedSocket) {
+        connectingRef.current = false
+        return
+      }
       const newSocket = connectedSocket
+      if (cancelled) {
+        newSocket.disconnect()
+        connectingRef.current = false
+        return
+      }
       setSocket(newSocket)
 
       const handlePosition = (data) => {
@@ -542,16 +680,16 @@ function App() {
         }, 300)
         // Tiny snapshot: fen/pgn/ply/updatedAt + last known clocks
         try {
-          if (gameId) {
+          if (gameIdRef.current) {
             const snap = {
-              id: gameId,
+              id: gameIdRef.current,
               updatedAt: data.updatedAt || new Date().toISOString(),
               fen: data.fen || '',
               pgn: data.pgn || '',
-              clocks: { whiteMs: clockLatest.whiteMs || 0, blackMs: clockLatest.blackMs || 0 },
+              clocks: { whiteMs: clockLatestRef.current.whiteMs || 0, blackMs: clockLatestRef.current.blackMs || 0 },
               ply: typeof data.ply === 'number' ? data.ply : (Array.isArray(data.history) ? data.history.length : 0)
             }
-            writeSnapshot(gameId, snap)
+            writeSnapshot(gameIdRef.current, snap)
           }
         } catch (_) {}
       }
@@ -559,6 +697,7 @@ function App() {
       const handleTerminate = () => {
         setStatus('lobby')
         setGameId('')
+        if (isHotSeatMode) writeHotSeatServerId('')
         setBoard(Array(8).fill([null, null, null, null, null, null, null, null]))
         setAvailableMoves([])
         setSelectedSquare('')
@@ -595,8 +734,9 @@ function App() {
       newSocket.on('gameId', (gid) => {
         setGameId(gid)
         try {
-          if (playerName && typeof playerName === 'string' && playerName.trim()) {
-            writeSession({ gameId: gid, playerName: playerName.trim() })
+          const currentName = playerNameRef.current
+          if (currentName && typeof currentName === 'string' && currentName.trim()) {
+            writeSession({ gameId: gid, playerName: currentName.trim() })
           }
         } catch (_) {}
       })
@@ -658,10 +798,14 @@ function App() {
       }
     }
 
-    if (!isHotSeatMode) {
-      connectSocket()
+    connectSocket().finally(() => {
+      connectingRef.current = false
+    })
+
+    return () => {
+      cancelled = true
     }
-  }, [isHotSeatMode, serverIp, clockLatest.whiteMs, clockLatest.blackMs, gameId, soundboard, playerName, readSession, writeSession, writeSnapshot, clearSession, clearSnapshot])
+  }, [serverIp, serverPort, socket, readSession, writeSession, writeSnapshot, clearSession, clearSnapshot])
 
   // Hot seat mode: handle promotion
   const handlePromote = (piece) => {
@@ -771,6 +915,46 @@ function App() {
     }
     setResumeModal({ open: false, game: null })
   }, [isHotSeatMode, handleHotSeatStartNew])
+
+  const handleHistoryContinue = useCallback(async (historyId) => {
+    try {
+      setHistoryLoading(true)
+      const res = await fetch(`http://${serverIp}:${serverPort}/games/${historyId}`)
+      if (!res.ok) throw new Error('Failed to load game')
+      const data = await res.json()
+      if (!data || !data.game) throw new Error('Game not found')
+      const chess = hydrateServerRecord(data.game)
+      if (!chess) throw new Error('Unable to load game state')
+      setGameId(data.game.id)
+      writeHotSeatServerId(data.game.id)
+      setHotSeatGame(chess)
+      setHotSeatCurrentPlayer(chess.turn())
+      setIsHistoryOpen(false)
+      setIsContextMenuOpen(false)
+      setSaveStatus({ state: 'saving', timestamp: Date.now() })
+      updateHotSeatPosition(chess)
+      pushSnapshotToServer(chess, data.game.id)
+      if (socket) {
+        socket.emit('resume', { gameId: data.game.id, playerName: playerNameRef.current || '' })
+      }
+    } catch (err) {
+      setHistoryError(err.message || 'Failed to continue game')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [serverIp, serverPort, hydrateServerRecord, updateHotSeatPosition, pushSnapshotToServer, socket, writeHotSeatServerId])
+
+  const handleHistoryDelete = useCallback(async (historyId) => {
+    try {
+      await fetch(`http://${serverIp}:${serverPort}/games/${historyId}`, { method: 'DELETE' })
+      setHistoryItems((items) => items.filter((g) => g.id !== historyId))
+      const stored = readHotSeatServerId()
+      if (stored === historyId) {
+        writeHotSeatServerId('')
+        if (isHotSeatMode) setGameId('')
+      }
+    } catch (_) {}
+  }, [serverIp, serverPort, readHotSeatServerId, writeHotSeatServerId, isHotSeatMode])
   //drag and drop
   const handleDragStart = async (e) => {
     // Drag starts on the piece image; it carries data-square
@@ -813,10 +997,37 @@ function App() {
             {isDevMode && <span className='badge badge-dev'>Dev</span>}
             {status === 'waiting' && <span className='badge-warn'>Waiting</span>}
           </div>
-          <div className='flex items-center gap-3 text-xs text-zinc-400'>
+          <div className='relative flex items-center gap-3 text-xs text-zinc-400'>
             {turn && <span>Turn: <span className='text-emerald-400 font-medium'>{turn === 'w' ? 'White' : 'Black'}</span></span>}
             {!isHotSeatMode && gameId && status === 'ready' && (
               <span>Session: <span className='font-mono text-emerald-400'>{gameId}</span></span>
+            )}
+            <button
+              type='button'
+              className='ml-3 inline-flex items-center justify-center w-8 h-8 rounded-md border border-white/10 bg-white/5 text-white/80 hover:bg-white/10'
+              onClick={() => setIsContextMenuOpen((v) => !v)}
+              aria-label='Open menu'
+            >
+              <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+                <circle cx='5' cy='12' r='1'/>
+                <circle cx='12' cy='12' r='1'/>
+                <circle cx='19' cy='12' r='1'/>
+              </svg>
+            </button>
+            {isContextMenuOpen && (
+              <div data-context-menu='1' className='absolute right-0 top-10 z-40 w-40 rounded-lg border border-white/15 bg-zinc-900/95 shadow-lg backdrop-blur'>
+                <button
+                  type='button'
+                  className='w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10'
+                  onClick={() => {
+                    setIsContextMenuOpen(false)
+                    setIsHistoryOpen(true)
+                    fetchHistoryGames()
+                  }}
+                >
+                  History
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -959,6 +1170,53 @@ function App() {
           onDiscard={handleResumeDialogDiscard}
           onStartNew={handleResumeDialogStartNew}
         />
+      )}
+
+      {isHistoryOpen && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center px-4'>
+          <div className='absolute inset-0 bg-black/60 backdrop-blur-sm' onClick={() => setIsHistoryOpen(false)}></div>
+          <div className='relative z-10 w-full max-w-2xl rounded-2xl border border-white/15 bg-zinc-900/95 p-4 shadow-2xl max-h-[80vh] overflow-hidden flex flex-col'>
+            <div className='flex items-center justify-between border-b border-white/10 pb-2 mb-3'>
+              <div>
+                <h3 className='text-lg font-semibold text-white'>Game History</h3>
+                <p className='text-xs text-zinc-400'>Resume or delete past games</p>
+              </div>
+              <button className='text-sm text-zinc-300 hover:text-white' onClick={() => setIsHistoryOpen(false)}>Close</button>
+            </div>
+            <div className='flex-1 overflow-y-auto space-y-2 pr-1'>
+              {historyLoading && <div className='text-sm text-zinc-400'>Loading…</div>}
+              {historyError && <div className='text-sm text-rose-400'>{historyError}</div>}
+              {!historyLoading && historyItems.length === 0 && !historyError && (
+                <div className='text-sm text-zinc-400'>No games recorded yet.</div>
+              )}
+              {historyItems.map((g) => (
+                <div key={g.id} className='rounded-lg border border-white/10 bg-white/5 p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2'>
+                  <div>
+                    <div className='text-white font-medium'>{g.id}</div>
+                    <div className='text-xs text-zinc-400'>Status: {g.status === 'finished' ? (g.result || 'Finished') : 'Unfinished'} · Moves: {g.moves}</div>
+                    <div className='text-xs text-zinc-500'>Last updated: {g.updatedAt ? new Date(g.updatedAt).toLocaleString() : 'n/a'}</div>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <button
+                      type='button'
+                      className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-500'
+                      onClick={() => handleHistoryContinue(g.id)}
+                    >
+                      Continue
+                    </button>
+                    <button
+                      type='button'
+                      className='px-3 py-1.5 rounded-md border border-white/20 text-xs text-white hover:bg-white/10'
+                      onClick={() => handleHistoryDelete(g.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

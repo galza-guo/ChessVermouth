@@ -90,6 +90,71 @@ app.post('/engine/game/end', async (req, res) => {
     res.status(502).json({ error: 'Engine proxy end failed' })
   }
 })
+
+// Game history endpoints
+app.get('/games', (req, res) => {
+  try {
+    const status = (req.query.status || 'all').toString()
+    const limitRaw = parseInt(req.query.limit, 10)
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50
+    const games = db.listGames({ status }).slice(0, limit).map((g) => ({
+      id: g.id,
+      status: g.status,
+      result: g.result || null,
+      createdAt: g.createdAt,
+      updatedAt: g.updatedAt,
+      finishedAt: g.finishedAt || null,
+      moves: Array.isArray(g.moves) ? g.moves.length : 0,
+      clocks: g.clocks || { whiteMs: 0, blackMs: 0 },
+      players: g.players || { hostName: null, opponentName: null }
+    }))
+    res.json({ games })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list games' })
+  }
+})
+
+app.get('/games/:id', (req, res) => {
+  try {
+    const rec = db.getGame(req.params.id)
+    if (!rec) {
+      res.status(404).json({ error: 'Game not found' })
+      return
+    }
+    res.json({ game: rec })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch game' })
+  }
+})
+
+app.delete('/games/:id', (req, res) => {
+  try {
+    db.deleteGame(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete game' })
+  }
+})
+
+app.post('/games', (req, res) => {
+  try {
+    const id = db.generateGameId()
+    const rec = db.createGameRecord({ id, startFEN: req.body?.startFEN || 'startpos' })
+    res.status(201).json({ game: rec })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create game' })
+  }
+})
+
+app.post('/games/:id/snapshot', (req, res) => {
+  try {
+    const payload = req.body || {}
+    db.updateSnapshot(req.params.id, payload)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update snapshot' })
+  }
+})
 // Try to detect Wi-Fi SSID/Network Name (best-effort, platform-specific)
 function getNetworkName() {
   // Allow override
