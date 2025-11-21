@@ -123,6 +123,9 @@ button {
   .badge-dev {
     @apply badge border-sky-500/30 bg-sky-500/10 text-sky-300;
   }
+  .badge-dev {
+    @apply badge border-sky-500/30 bg-sky-500/10 text-sky-300;
+  }
 
   /* Neumorphic round icon button */
   .neo-btn {

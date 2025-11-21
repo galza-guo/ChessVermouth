@@ -122,6 +122,7 @@ function App() {
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   // Leave/New Game confirmation dialog
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false)
+  const [hotSeatResumeChecked, setHotSeatResumeChecked] = useState(false)
   // Clock reset signal (increments on new game/reset)
   const [clockResetNonce, setClockResetNonce] = useState(0)
   // Optional player names (for labels)
@@ -129,6 +130,8 @@ function App() {
   const [opponentName, setOpponentName] = useState('')
   // Latest clock values from ControlPanel for snapshot and server persistence
   const [clockLatest, setClockLatest] = useState({ whiteMs: 0, blackMs: 0 })
+  const [saveStatus, setSaveStatus] = useState({ state: 'idle', timestamp: null })
+  const saveTimerRef = useRef(null)
   // Emoji overlay bursts on/near the board
   const [emojiBursts, setEmojiBursts] = useState([])
   const sendEmoji = useCallback((src, label) => {
@@ -143,6 +146,32 @@ function App() {
       setEmojiBursts((prev) => prev.filter((e) => e.id !== id))
     }, 2500)
   }, [])
+
+  const saveIndicator = useMemo(() => {
+    const title = saveStatus.timestamp
+      ? `Last saved ${new Date(saveStatus.timestamp).toLocaleTimeString()}`
+      : 'No saved state yet'
+    if (saveStatus.state === 'saving') {
+      return (
+        <span className='inline-flex items-center gap-1 text-xs text-amber-300' title={title}>
+          <svg className='h-3 w-3 animate-spin' viewBox='0 0 24 24' fill='none'>
+            <circle cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='2' strokeOpacity='0.3' />
+            <path d='M22 12a10 10 0 0 0-10-10' stroke='currentColor' strokeWidth='2' strokeLinecap='round' />
+          </svg>
+          <span>Saving…</span>
+        </span>
+      )
+    }
+    if (saveStatus.state === 'idle' && !saveStatus.timestamp) return null
+    return (
+      <span className='inline-flex items-center gap-1 text-xs text-emerald-300' title={title}>
+        <svg className='h-3 w-3' viewBox='0 0 24 24' fill='none'>
+          <path d='M5 13l4 4L19 7' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' />
+        </svg>
+        <span>Saved</span>
+      </span>
+    )
+  }, [saveStatus])
   // When a confirmation dialog opens, collapse the floating control panel
   useEffect(() => {
     if (resetConfirmOpen || leaveConfirmOpen) {
@@ -153,6 +182,7 @@ function App() {
     if (isHotSeatMode && hotSeatGame) {
       hotSeatGame.reset()
       updateHotSeatPosition()
+      clearHotSeatSnapshot()
     } else if (socket) {
       socket.emit('reset', gameId)
     }
@@ -164,6 +194,7 @@ function App() {
       if (hotSeatGame) {
         hotSeatGame.reset()
         updateHotSeatPosition()
+        clearHotSeatSnapshot()
       }
     } else if (socket) {
       socket.emit('leave', gameId)
@@ -180,6 +211,78 @@ function App() {
   const clearSession = useCallback(() => { try { localStorage.removeItem('cv:session') } catch {} }, [])
   const writeSnapshot = useCallback((id, snap) => { try { localStorage.setItem(`cv:snap:${id}`, JSON.stringify(snap)) } catch {} }, [])
   const clearSnapshot = useCallback((id) => { try { localStorage.removeItem(`cv:snap:${id}`) } catch {} }, [])
+  const HOTSEAT_SNAPSHOT_KEY = 'cv:hotseat-resume'
+  const readHotSeatSnapshot = useCallback(() => {
+    try { const raw = localStorage.getItem(HOTSEAT_SNAPSHOT_KEY); return raw ? JSON.parse(raw) : null } catch { return null }
+  }, [])
+  const writeHotSeatSnapshot = useCallback((payload) => {
+    try { localStorage.setItem(HOTSEAT_SNAPSHOT_KEY, JSON.stringify(payload)) } catch {}
+  }, [])
+  const clearHotSeatSnapshot = useCallback(() => { try { localStorage.removeItem(HOTSEAT_SNAPSHOT_KEY) } catch {} }, [])
+  const persistHotSeatSnapshot = useCallback((gameInstance) => {
+    const game = gameInstance || hotSeatGame
+    if (!game) return
+    const historyVerbose = game.history({ verbose: true })
+    const historyData = historyVerbose.map((m) => ({
+      from: m.from,
+      to: m.to,
+      promotion: m.promotion || null,
+      san: m.san,
+      flags: m.flags,
+      color: m.color,
+      uci: `${m.from}${m.to}${m.promotion || ''}`
+    }))
+    const existing = readHotSeatSnapshot()
+    const snapshot = {
+      id: existing?.id || `hotseat-${Date.now()}`,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      moves: historyData.length,
+      history: historyData,
+      clocks: {
+        whiteMs: Number.isFinite(clockLatest.whiteMs) ? clockLatest.whiteMs : 0,
+        blackMs: Number.isFinite(clockLatest.blackMs) ? clockLatest.blackMs : 0
+      },
+      fen: game.fen(),
+      pgn: game.pgn(),
+      startFEN: 'startpos'
+    }
+    writeHotSeatSnapshot(snapshot)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      setSaveStatus({ state: 'saved', timestamp: Date.now() })
+      saveTimerRef.current = null
+    }, 300)
+  }, [hotSeatGame, clockLatest, readHotSeatSnapshot, writeHotSeatSnapshot])
+  const hydrateHotSeatGameFromSnapshot = useCallback((snapshot) => {
+    if (!snapshot) return null
+    const initialFen = snapshot.startFEN && snapshot.startFEN !== 'startpos' ? snapshot.startFEN : undefined
+    const resumedGame = new Chess(initialFen)
+    let loadedFromPgn = false
+    if (snapshot.pgn) {
+      try {
+        loadedFromPgn = resumedGame.loadPgn(snapshot.pgn)
+      } catch (_) {
+        loadedFromPgn = false
+      }
+    }
+    if (!loadedFromPgn && Array.isArray(snapshot.history)) {
+      for (const step of snapshot.history) {
+        const uci = step.uci || `${step.from}${step.to}${step.promotion || ''}`
+        try { resumedGame.move(uci) } catch (_) {}
+      }
+    }
+    return resumedGame
+  }, [])
+
+  useEffect(() => {
+    if (!isHotSeatMode || hotSeatResumeChecked) return
+    setHotSeatResumeChecked(true)
+    const stored = readHotSeatSnapshot()
+    if (stored) {
+      setResumeModal({ open: true, game: stored })
+    }
+  }, [isHotSeatMode, hotSeatResumeChecked, readHotSeatSnapshot])
 
   const getMoves = async (square) => {
     if (isHotSeatMode) {
@@ -199,187 +302,7 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    if (isHotSeatMode && hotSeatGame) {
-      // Hot seat mode: initialize game when hotSeatGame is ready
-      console.log('Hot seat mode: Initializing game...')
-      console.log('Chess game instance:', hotSeatGame)
-      try {
-        console.log('Initial board:', hotSeatGame.board())
-        console.log('Initial turn:', hotSeatGame.turn())
-        updateHotSeatPosition()
-      } catch (error) {
-        console.error('Error initializing hot seat game:', error)
-      }
-      return
-    }
-
-    // Network mode: connect to socket server
-    const connectSocket = async () => {
-      const io = await import('socket.io-client')
-      // Try env/default then a small range to handle occupied ports
-      const base = (() => {
-        const envPort = import.meta.env.VITE_SERVER_PORT
-        const n = envPort ? parseInt(envPort) : 3001
-        return Number.isFinite(n) ? n : 3001
-      })()
-      const candidates = Array.from({ length: 10 }, (_, i) => base + i)
-
-      let connectedSocket = null
-      for (const p of candidates) {
-        try {
-          const s = io.connect(`http://${serverIp}:${p}`, { timeout: 1200, reconnection: false })
-          const ok = await new Promise((resolve) => {
-            const timer = setTimeout(() => resolve(false), 1200)
-            s.on('connect', () => { clearTimeout(timer); resolve(true) })
-            s.on('connect_error', () => { clearTimeout(timer); resolve(false) })
-            s.on('error', () => { clearTimeout(timer); resolve(false) })
-          })
-          if (ok) {
-            connectedSocket = s
-            setServerPort(p)
-            break
-          } else {
-            s.close()
-          }
-        } catch (_) {
-          // try next
-        }
-      }
-
-      if (!connectedSocket) return
-      const newSocket = connectedSocket
-      setSocket(newSocket)
-
-      const handlePosition = (data) => {
-        setBoard(data.position)
-        setTurn(data.turn)
-        setIsCheck(data.isCheck)
-        setIsGameOver([data.isGameOver, {
-          isCheckmate: data.isCheckmate,
-          isDraw: data.isDraw,
-          isStalemate: data.isStalemate
-        }])
-        setHistory(data.history)
-        // Tiny snapshot: fen/pgn/ply/updatedAt + last known clocks
-        try {
-          if (gameId) {
-            const snap = {
-              id: gameId,
-              updatedAt: data.updatedAt || new Date().toISOString(),
-              fen: data.fen || '',
-              pgn: data.pgn || '',
-              clocks: { whiteMs: clockLatest.whiteMs || 0, blackMs: clockLatest.blackMs || 0 },
-              ply: typeof data.ply === 'number' ? data.ply : (Array.isArray(data.history) ? data.history.length : 0)
-            }
-            writeSnapshot(gameId, snap)
-          }
-        } catch (_) {}
-      }
-
-      const handleTerminate = () => {
-        setStatus('lobby')
-        setGameId('')
-        setBoard(Array(8).fill([null, null, null, null, null, null, null, null]))
-        setAvailableMoves([])
-        setSelectedSquare('')
-        setTurn('')
-        setIsCheck(false)
-        setIsGameOver([false, {
-          isCheckmate: false,
-          isDraw: false,
-          isStalemate: false
-        }])
-        setHistory([])
-        setColor('')
-        setPromotionRequired(false)
-        setPromotionData(null)
-        setClockResetNonce((n) => n + 1)
-      }
-
-      const handlePromotionRequired = (data) => {
-        setPromotionRequired(true)
-        setPromotionData(data)
-      }
-
-      const handlePromotionComplete = () => {
-      setPromotionRequired(false)
-      setPromotionData(null)
-      // Play promotion sound
-      soundboard.move()
-    }
-
-      newSocket.on('position', handlePosition)
-      newSocket.on('color', setColor)
-      newSocket.on('status', setStatus)
-      newSocket.on('terminate', handleTerminate)
-      newSocket.on('gameId', (gid) => {
-        setGameId(gid)
-        try {
-          if (playerName && typeof playerName === 'string' && playerName.trim()) {
-            writeSession({ gameId: gid, playerName: playerName.trim() })
-          }
-        } catch (_) {}
-      })
-      newSocket.on('promotionRequired', handlePromotionRequired)
-      newSocket.on('promotionComplete', handlePromotionComplete)
-      // Persistence/resume events
-      newSocket.on('unfinishedGames', ({ games }) => {
-        try {
-          if (readSession()) return
-          if (Array.isArray(games) && games.length > 0) {
-            // Show most recently updated unfinished game
-            const g = games[games.length - 1]
-            setResumeModal({ open: true, game: g })
-          }
-        } catch (_) {}
-      })
-      newSocket.on('resumed', ({ gameId: gid }) => {
-        console.log('Game resumed', gid)
-      })
-      newSocket.on('resumeError', (e) => {
-        console.warn('Resume error', e && e.error)
-      })
-      newSocket.on('gameFinished', ({ gameId: gid, result, finishedAt }) => {
-        try {
-          clearSession()
-          clearSnapshot(gid)
-          console.log(`Game ${gid} finished (${result}) at ${finishedAt}`)
-        } catch (_) {}
-      })
-      newSocket.on('gameDiscarded', ({ gameId: gid }) => {
-        if (resumeModal.open && resumeModal.game && resumeModal.game.id === gid) {
-          setResumeModal({ open: false, game: null })
-        }
-      })
-
-      // Auto-resume if there is a saved session
-      try {
-        const sess = readSession()
-        if (sess && sess.gameId) {
-          newSocket.emit('resume', { gameId: sess.gameId, playerName: sess.playerName || '' })
-        }
-      } catch (_) {}
-      newSocket.on('disconnect', () => {
-        handleTerminate()
-      })
-
-      return () => {
-        newSocket.off('position', handlePosition)
-        newSocket.off('color', setColor)
-        newSocket.off('status', setStatus)
-        newSocket.off('terminate', handleTerminate)
-        newSocket.off('promotionRequired', handlePromotionRequired)
-        newSocket.off('promotionComplete', handlePromotionComplete)
-        newSocket.off('disconnect')
-        newSocket.disconnect()
-      }
-    }
-
-    if (!isHotSeatMode) {
-      connectSocket()
-    }
-  }, [hotSeatGame])
+  
 
   useEffect(() => {
     if (history.length > 0) {
@@ -443,6 +366,7 @@ function App() {
     if (isHotSeatMode) {
       // Hot seat mode: handle moves locally
       if (hotSeatGame && hotSeatGame.turn() === hotSeatCurrentPlayer[0]) {
+        setSaveStatus({ state: 'saving', timestamp: Date.now() })
         try {
           let result = hotSeatGame.move(move)
           if (result) {
@@ -469,21 +393,25 @@ function App() {
     } else {
       // Network mode: existing logic
       if (turn === color[0]) {
+        setSaveStatus({ state: 'saving', timestamp: Date.now() })
         const clocksPayload = { whiteMs: clockLatest.whiteMs || 0, blackMs: clockLatest.blackMs || 0 }
         socket.emit('move', { gameId: gameId, move: move, clocks: clocksPayload })
       }
     }
   }
 
+  const updateHotSeatPositionRef = useRef(() => {})
+
   // Hot seat mode: update game position after move
-  const updateHotSeatPosition = useCallback(() => {
-    if (!hotSeatGame) return
+  const updateHotSeatPosition = useCallback((gameInstance) => {
+    const game = gameInstance || hotSeatGame
+    if (!game) return
     
     console.log('updateHotSeatPosition called')
-    console.log('Current board state:', hotSeatGame.board())
+    console.log('Current board state:', game.board())
     
     let moveType = 'move'
-    const history = hotSeatGame.history({verbose: true})
+    const history = game.history({verbose: true})
     
     if (history.length > 0) {
       let lastMove = history[history.length - 1]
@@ -493,29 +421,29 @@ function App() {
       if (lastMove.flags.includes('e') || lastMove.flags.includes('c')) {
         moveType = 'capture'
       }
-      if (hotSeatGame.inCheck()) {
+      if (game.inCheck()) {
         moveType = 'check'
       }
-      if (hotSeatGame.isGameOver()) {
+      if (game.isGameOver()) {
         moveType = 'gameOver'
       }
     }
 
-    const newBoard = hotSeatGame.board()
-    const newTurn = hotSeatGame.turn()
+    const newBoard = game.board()
+    const newTurn = game.turn()
     
     console.log('Setting board to:', newBoard)
     console.log('Setting turn to:', newTurn)
     
     setBoard(newBoard)
     setTurn(newTurn)
-    setIsCheck(hotSeatGame.isCheck())
-    setIsGameOver([hotSeatGame.isGameOver(), {
-      isCheckmate: hotSeatGame.isCheckmate(),
-      isDraw: hotSeatGame.isDraw(),
-      isStalemate: hotSeatGame.isStalemate()
+    setIsCheck(game.isCheck())
+    setIsGameOver([game.isGameOver(), {
+      isCheckmate: game.isCheckmate(),
+      isDraw: game.isDraw(),
+      isStalemate: game.isStalemate()
     }])
-    setHistory(hotSeatGame.history({verbose: true}).map(move => ({
+    setHistory(game.history({verbose: true}).map(move => ({
       from: move.from,
       to: move.to,
       type: moveType,
@@ -523,10 +451,217 @@ function App() {
     })))
     
     // Switch current player
-    setHotSeatCurrentPlayer(hotSeatGame.turn())
-    
+    setHotSeatCurrentPlayer(game.turn())
+
     console.log('Board state updated successfully')
-  }, [hotSeatGame])
+    persistHotSeatSnapshot(game)
+  }, [hotSeatGame, persistHotSeatSnapshot])
+
+  useEffect(() => {
+    updateHotSeatPositionRef.current = updateHotSeatPosition
+  }, [updateHotSeatPosition])
+
+  const hotSeatGameOver = isGameOver[0]
+  useEffect(() => {
+    if (isHotSeatMode && hotSeatGameOver) {
+      clearHotSeatSnapshot()
+    }
+  }, [isHotSeatMode, hotSeatGameOver, clearHotSeatSnapshot])
+
+  useEffect(() => {
+    if (!isHotSeatMode || !hotSeatGame) return
+    console.log('Hot seat mode: Initializing game...')
+    try {
+      console.log('Initial board:', hotSeatGame.board())
+      console.log('Initial turn:', hotSeatGame.turn())
+      const storedSnapshot = readHotSeatSnapshot()
+      if (!storedSnapshot) {
+        updateHotSeatPositionRef.current()
+      } else {
+        console.log('Hot seat resume snapshot detected, waiting for user choice before updating board')
+      }
+    } catch (error) {
+      console.error('Error initializing hot seat game:', error)
+    }
+  }, [isHotSeatMode, hotSeatGame, readHotSeatSnapshot])
+
+  useEffect(() => {
+    if (isHotSeatMode) return
+
+    // Network mode: connect to socket server
+    const connectSocket = async () => {
+      const io = await import('socket.io-client')
+      // Try env/default then a small range to handle occupied ports
+      const base = (() => {
+        const envPort = import.meta.env.VITE_SERVER_PORT
+        const n = envPort ? parseInt(envPort) : 3001
+        return Number.isFinite(n) ? n : 3001
+      })()
+      const candidates = Array.from({ length: 10 }, (_, i) => base + i)
+
+      let connectedSocket = null
+      for (const p of candidates) {
+        try {
+          const s = io.connect(`http://${serverIp}:${p}`, { timeout: 1200, reconnection: false })
+          const ok = await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(false), 1200)
+            s.on('connect', () => { clearTimeout(timer); resolve(true) })
+            s.on('connect_error', () => { clearTimeout(timer); resolve(false) })
+            s.on('error', () => { clearTimeout(timer); resolve(false) })
+          })
+          if (ok) {
+            connectedSocket = s
+            setServerPort(p)
+            break
+          } else {
+            s.close()
+          }
+        } catch (_) {
+          // try next
+        }
+      }
+
+      if (!connectedSocket) return
+      const newSocket = connectedSocket
+      setSocket(newSocket)
+
+      const handlePosition = (data) => {
+        setBoard(data.position)
+        setTurn(data.turn)
+        setIsCheck(data.isCheck)
+        setIsGameOver([data.isGameOver, {
+          isCheckmate: data.isCheckmate,
+          isDraw: data.isDraw,
+          isStalemate: data.isStalemate
+        }])
+        setHistory(data.history)
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = setTimeout(() => {
+          setSaveStatus({ state: 'saved', timestamp: Date.now() })
+          saveTimerRef.current = null
+        }, 300)
+        // Tiny snapshot: fen/pgn/ply/updatedAt + last known clocks
+        try {
+          if (gameId) {
+            const snap = {
+              id: gameId,
+              updatedAt: data.updatedAt || new Date().toISOString(),
+              fen: data.fen || '',
+              pgn: data.pgn || '',
+              clocks: { whiteMs: clockLatest.whiteMs || 0, blackMs: clockLatest.blackMs || 0 },
+              ply: typeof data.ply === 'number' ? data.ply : (Array.isArray(data.history) ? data.history.length : 0)
+            }
+            writeSnapshot(gameId, snap)
+          }
+        } catch (_) {}
+      }
+
+      const handleTerminate = () => {
+        setStatus('lobby')
+        setGameId('')
+        setBoard(Array(8).fill([null, null, null, null, null, null, null, null]))
+        setAvailableMoves([])
+        setSelectedSquare('')
+        setTurn('')
+        setIsCheck(false)
+        setIsGameOver([false, {
+          isCheckmate: false,
+          isDraw: false,
+          isStalemate: false
+        }])
+        setHistory([])
+        setColor('')
+        setPromotionRequired(false)
+        setPromotionData(null)
+        setClockResetNonce((n) => n + 1)
+      }
+
+      const handlePromotionRequired = (data) => {
+        setPromotionRequired(true)
+        setPromotionData(data)
+      }
+
+      const handlePromotionComplete = () => {
+        setPromotionRequired(false)
+        setPromotionData(null)
+        // Play promotion sound
+        soundboard.move()
+      }
+
+      newSocket.on('position', handlePosition)
+      newSocket.on('color', setColor)
+      newSocket.on('status', setStatus)
+      newSocket.on('terminate', handleTerminate)
+      newSocket.on('gameId', (gid) => {
+        setGameId(gid)
+        try {
+          if (playerName && typeof playerName === 'string' && playerName.trim()) {
+            writeSession({ gameId: gid, playerName: playerName.trim() })
+          }
+        } catch (_) {}
+      })
+      newSocket.on('promotionRequired', handlePromotionRequired)
+      newSocket.on('promotionComplete', handlePromotionComplete)
+      // Persistence/resume events
+      newSocket.on('unfinishedGames', ({ games }) => {
+        try {
+          if (readSession()) return
+          if (Array.isArray(games) && games.length > 0) {
+            // Show most recently updated unfinished game
+            const g = games[games.length - 1]
+            setResumeModal({ open: true, game: g })
+          }
+        } catch (_) {}
+      })
+      newSocket.on('resumed', ({ gameId: gid }) => {
+        console.log('Game resumed', gid)
+      })
+      newSocket.on('resumeError', (e) => {
+        console.warn('Resume error', e && e.error)
+      })
+      newSocket.on('gameFinished', ({ gameId: gid, result, finishedAt }) => {
+        try {
+          clearSession()
+          clearSnapshot(gid)
+          console.log(`Game ${gid} finished (${result}) at ${finishedAt}`)
+        } catch (_) {}
+      })
+      newSocket.on('gameDiscarded', ({ gameId: gid }) => {
+        setResumeModal((prev) => {
+          if (prev.open && prev.game && prev.game.id === gid) {
+            return { open: false, game: null }
+          }
+          return prev
+        })
+      })
+
+      // Auto-resume if there is a saved session
+      try {
+        const sess = readSession()
+        if (sess && sess.gameId) {
+          newSocket.emit('resume', { gameId: sess.gameId, playerName: sess.playerName || '' })
+        }
+      } catch (_) {}
+      newSocket.on('disconnect', () => {
+        handleTerminate()
+      })
+
+      return () => {
+        newSocket.off('position', handlePosition)
+        newSocket.off('color', setColor)
+        newSocket.off('status', setStatus)
+        newSocket.off('terminate', handleTerminate)
+        newSocket.off('promotionRequired', handlePromotionRequired)
+        newSocket.off('promotionComplete', handlePromotionComplete)
+        newSocket.off('disconnect')
+        newSocket.disconnect()
+      }
+    }
+
+    if (!isHotSeatMode) {
+      connectSocket()
+    }
+  }, [isHotSeatMode, serverIp, clockLatest.whiteMs, clockLatest.blackMs, gameId, soundboard, playerName, readSession, writeSession, writeSnapshot, clearSession, clearSnapshot])
 
   // Hot seat mode: handle promotion
   const handlePromote = (piece) => {
@@ -567,6 +702,75 @@ function App() {
       setAvailableMoves([])
     }
   }
+
+  const handleHotSeatResume = useCallback(() => {
+    const snapshot = readHotSeatSnapshot()
+    if (!snapshot) return
+    const resumedGame = hydrateHotSeatGameFromSnapshot(snapshot)
+    if (!resumedGame) return
+    setHotSeatGame(resumedGame)
+    setClockLatest({
+      whiteMs: Number.isFinite(snapshot.clocks?.whiteMs) ? snapshot.clocks.whiteMs : 0,
+      blackMs: Number.isFinite(snapshot.clocks?.blackMs) ? snapshot.clocks.blackMs : 0
+    })
+    setSaveStatus({ state: 'saving', timestamp: Date.now() })
+    updateHotSeatPosition(resumedGame)
+    setResumeModal({ open: false, game: null })
+  }, [hydrateHotSeatGameFromSnapshot, readHotSeatSnapshot, updateHotSeatPosition])
+
+  const handleHotSeatDiscard = useCallback(() => {
+    clearHotSeatSnapshot()
+    setSaveStatus({ state: 'saving', timestamp: Date.now() })
+    if (hotSeatGame) {
+      hotSeatGame.reset()
+      updateHotSeatPosition()
+    }
+    setResumeModal({ open: false, game: null })
+  }, [clearHotSeatSnapshot, hotSeatGame, updateHotSeatPosition])
+
+  const handleHotSeatStartNew = useCallback(() => {
+    clearHotSeatSnapshot()
+    setSaveStatus({ state: 'saving', timestamp: Date.now() })
+    if (hotSeatGame) {
+      hotSeatGame.reset()
+      updateHotSeatPosition()
+    }
+    setResumeModal({ open: false, game: null })
+  }, [clearHotSeatSnapshot, hotSeatGame, updateHotSeatPosition])
+
+  const handleResumeDialogResume = useCallback(() => {
+    if (isHotSeatMode) {
+      handleHotSeatResume()
+      return
+    }
+    try {
+      const name = window.prompt('Enter your name (e.g., Gallant or Vermouth)') || ''
+      if (socket && resumeModal.game) {
+        socket.emit('resume', { gameId: resumeModal.game.id, playerName: name })
+        writeSession({ gameId: resumeModal.game.id, playerName: name })
+      }
+      setResumeModal({ open: false, game: null })
+    } catch (_) {}
+  }, [isHotSeatMode, handleHotSeatResume, socket, resumeModal.game, writeSession])
+
+  const handleResumeDialogDiscard = useCallback(() => {
+    if (isHotSeatMode) {
+      handleHotSeatDiscard()
+      return
+    }
+    try {
+      if (socket && resumeModal.game) socket.emit('discardGame', { gameId: resumeModal.game.id })
+      setResumeModal({ open: false, game: null })
+    } catch (_) {}
+  }, [isHotSeatMode, socket, resumeModal.game, handleHotSeatDiscard])
+
+  const handleResumeDialogStartNew = useCallback(() => {
+    if (isHotSeatMode) {
+      handleHotSeatStartNew()
+      return
+    }
+    setResumeModal({ open: false, game: null })
+  }, [isHotSeatMode, handleHotSeatStartNew])
   //drag and drop
   const handleDragStart = async (e) => {
     // Drag starts on the piece image; it carries data-square
@@ -620,8 +824,11 @@ function App() {
 
       {/* Main Content */}
       <main className='mx-auto max-w-3xl p-4 grid grid-cols-1 gap-4 items-start justify-items-center'>
-        <div className='flex items-center justify-center'>
+        <div className='flex flex-col items-center justify-center gap-2 w-full'>
           {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color, emojiBursts })}
+          <div className='w-full flex justify-start px-1'>
+            {saveIndicator}
+          </div>
         </div>
 
         {/* Game Lobby overlay (does not affect ControlPanel) */}
@@ -748,20 +955,9 @@ function App() {
       {resumeModal.open && resumeModal.game && (
         <ResumeDialog
           game={resumeModal.game}
-          onResume={() => {
-            try {
-              const name = window.prompt('Enter your name (e.g., Gallant or Vermouth)') || ''
-              if (socket && resumeModal.game) {
-                socket.emit('resume', { gameId: resumeModal.game.id, playerName: name })
-                writeSession({ gameId: resumeModal.game.id, playerName: name })
-                setResumeModal({ open: false, game: null })
-              }
-            } catch (_) {}
-          }}
-          onDiscard={() => {
-            try { if (socket && resumeModal.game) socket.emit('discardGame', { gameId: resumeModal.game.id }) } catch (_) {}
-          }}
-          onStartNew={() => { setResumeModal({ open: false, game: null }) }}
+          onResume={handleResumeDialogResume}
+          onDiscard={handleResumeDialogDiscard}
+          onStartNew={handleResumeDialogStartNew}
         />
       )}
     </div>
