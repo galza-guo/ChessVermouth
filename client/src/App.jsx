@@ -109,7 +109,6 @@ function App() {
   const [status, setStatus] = useState(isHotSeatMode ? 'ready' : 'lobby')
   const [promotionRequired, setPromotionRequired] = useState(false)
   const [promotionData, setPromotionData] = useState(null)
-  const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [serverInfo, setServerInfo] = useState(null)
   // Resume modal (unfinished game)
   const [resumeModal, setResumeModal] = useState({ open: false, game: null })
@@ -198,13 +197,6 @@ function App() {
       setHistoryLoading(false)
     }
   }, [serverIp, serverPort])
-  // When a confirmation dialog opens, collapse the floating control panel
-  useEffect(() => {
-    if (resetConfirmOpen || leaveConfirmOpen) {
-      setIsPanelOpen(false)
-    }
-  }, [resetConfirmOpen, leaveConfirmOpen])
-
   useEffect(() => {
     if (!isContextMenuOpen) return
     const onClick = (e) => {
@@ -1034,7 +1026,7 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className='mx-auto max-w-3xl p-4 grid grid-cols-1 gap-4 items-start justify-items-center'>
+      <main className='mx-auto max-w-5xl w-full p-4 grid grid-cols-1 gap-4 items-start justify-items-center'>
         <div className='flex flex-col items-center justify-center gap-2 w-full'>
           {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color, emojiBursts })}
           <div className='w-full flex justify-start px-1'>
@@ -1067,61 +1059,38 @@ function App() {
           </div>
         )}
 
-        {/* Round context menu button (FAB on mobile) */}
-        <div className='-mt-2 flex items-center justify-center w-full'>
-          <button
-            aria-label={isPanelOpen ? 'Close panel' : 'Open panel'}
-            aria-expanded={isPanelOpen}
-            className={`btn-secondary rounded-full w-14 h-14 p-0 flex items-center justify-center shadow-lg shadow-black/30 fixed fab z-[1300] md:static md:z-auto md:shadow-none transition-colors ${isPanelOpen ? 'ring-2 ring-emerald-500/40' : ''}`}
-            onClick={() => setIsPanelOpen((v) => !v)}
-          >
-            {/* simple dots icon */}
-            <svg width='22' height='22' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg' className={`transition-transform ${isPanelOpen ? 'rotate-90' : ''}`}>
-              <circle cx='4' cy='10' r='2' fill='currentColor'/>
-              <circle cx='10' cy='10' r='2' fill='currentColor'/>
-              <circle cx='16' cy='10' r='2' fill='currentColor'/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Floating Control Panel (animated) */}
-        <div
-          aria-hidden={!isPanelOpen}
-          className={`z-[1200] transition-all duration-300 ease-out ${isPanelOpen ? 'opacity-100 translate-y-0' : 'opacity-0 pointer-events-none translate-y-2'} fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-[calc(1.25rem+env(safe-area-inset-right,0px))] w-[min(92vw,520px)] md:static md:w-full md:max-w-[500px]`}
-        >
-          <Panel
-            history={history}
-            tableEnd={tableEnd}
-            socket={socket}
-            status={status}
-            color={color}
-            turn={turn}
-            isGameOver={isGameOver}
-            gameId={gameId}
-            clockResetNonce={clockResetNonce}
-            playerName={playerName}
-            opponentName={opponentName}
-            isHotSeatMode={isHotSeatMode}
-            hotSeatCurrentPlayer={hotSeatCurrentPlayer}
-            hotSeatGame={hotSeatGame}
-            updateHotSeatPosition={updateHotSeatPosition}
-            serverIp={serverIp}
-            serverPort={serverPort}
-            serverInfo={serverInfo}
-            clientPort={clientPort}
-            enginePort={enginePort}
-            isQrOpen={isQrOpen}
-            setIsQrOpen={setIsQrOpen}
-            qrDataUrl={qrDataUrl}
-            setQrDataUrl={setQrDataUrl}
-            qrLoading={qrLoading}
-            setQrLoading={setQrLoading}
-            onRequestReset={() => setResetConfirmOpen(true)}
-            onRequestLeave={() => setLeaveConfirmOpen(true)}
-            onSendEmoji={sendEmoji}
-            onClockUpdate={setClockLatest}
-          />
-        </div>
+        <Panel
+          history={history}
+          tableEnd={tableEnd}
+          socket={socket}
+          status={status}
+          color={color}
+          turn={turn}
+          isGameOver={isGameOver}
+          gameId={gameId}
+          clockResetNonce={clockResetNonce}
+          playerName={playerName}
+          opponentName={opponentName}
+          isHotSeatMode={isHotSeatMode}
+          hotSeatCurrentPlayer={hotSeatCurrentPlayer}
+          hotSeatGame={hotSeatGame}
+          updateHotSeatPosition={updateHotSeatPosition}
+          serverIp={serverIp}
+          serverPort={serverPort}
+          serverInfo={serverInfo}
+          clientPort={clientPort}
+          enginePort={enginePort}
+          isQrOpen={isQrOpen}
+          setIsQrOpen={setIsQrOpen}
+          qrDataUrl={qrDataUrl}
+          setQrDataUrl={setQrDataUrl}
+          qrLoading={qrLoading}
+          setQrLoading={setQrLoading}
+          onRequestReset={() => setResetConfirmOpen(true)}
+          onRequestLeave={() => setLeaveConfirmOpen(true)}
+          onSendEmoji={sendEmoji}
+          onClockUpdate={setClockLatest}
+        />
       </main>
 
       {/* Promotion Dialog */}
@@ -1425,13 +1394,12 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
       className={`group w-full rounded-lg border border-white/10 backdrop-blur px-3 py-2 text-sm text-white/90 transition-all ${active ? 'bg-white/10 shadow-[0_6px_16px_rgba(0,0,0,0.35)] ring-2 ring-emerald-400/40' : 'bg-white/5 shadow-inner'}`}
       aria-pressed={active}
     >
-      <div className='flex items-center justify-between'>
-        <span className={`text-[11px] uppercase tracking-wide ${active ? 'text-emerald-300' : 'text-zinc-300'}`}>{label}</span>
-        <div style={{ fontVariantNumeric: 'tabular-nums' }} className='font-semibold'>
+      <div className='flex flex-col items-start gap-1'>
+        <span className={`text-[10px] uppercase tracking-wide ${active ? 'text-emerald-300' : 'text-zinc-300'}`}>{label}</span>
+        <div style={{ fontVariantNumeric: 'tabular-nums' }} className='font-semibold text-base'>
           {easterEgg ? (
             <span className='text-emerald-300'>長考之王</span>
           ) : (
-            // Fixed-width grid: 2ch for minutes, 1ch for colon, 2ch for seconds (no zero-pad)
             <span className='inline-grid' style={{ gridTemplateColumns: '2ch 1ch 2ch' }}>
               <span className='justify-self-end'>{minutes}</span>
               <span className='px-0.5'>:</span>
@@ -1715,14 +1683,10 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
   useEffect(() => () => closeAiWs(), [closeAiWs])
 
   return (
-    <div className='glass-panel p-4 flex flex-col gap-4 md:h-[500px]'>
-      <div className='flex items-center justify-between'>
-        {currentPlayerText && <p className='text-sm text-zinc-300'>{currentPlayerText}</p>}
-      </div>
-
-      <div className='flex gap-4 grow items-stretch'>
+    <div className='glass-panel w-full p-4 flex flex-col gap-4'>
+      <div className='flex flex-row flex-nowrap gap-4 items-start w-full overflow-hidden'>
         {/* Left: vertical icon-only actions */}
-        <div className='flex flex-col items-center gap-2 pr-1 flex-shrink-0'>
+        <div className='flex flex-col items-start gap-2 shrink-0'>
           {/* Emoji (ViewWindow toggle) */}
           <div className='relative group'>
             <button
@@ -1823,7 +1787,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
         </div>
 
         {/* Middle: versatile panel (ViewWindow) */}
-        <div className='flex flex-col gap-3 grow min-w-0'>
+        <div className='flex flex-col gap-3 min-w-0 basis-1/2 grow'>
           <div
             ref={tableEnd}
             role='region'
@@ -1910,9 +1874,9 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
                     ))}
                   </div>
                 )}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
         {status === 'ready' && !isHotSeatMode && (
           <div className='text-xs text-zinc-400'>
             <p>Connected to Session: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
@@ -1924,25 +1888,14 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
           </div>
         )}
         {/* Analysis panel removed; AnalysisView now lives inside the ViewWindow above */}
-      </div>
+        </div>
 
         {/* Right: clocks (top = opponent, bottom = you) */}
-        <div className='flex flex-col gap-3 w-44 md:w-56 shrink-0'>
+        <div className='flex flex-col gap-3 shrink-0'>
           {renderTimer(topColor)}
           {renderTimer(bottomColor)}
         </div>
-
-        
-
-        
-        {isHotSeatMode && (
-          <div className='hidden text-xs text-zinc-400'>
-            <p>Hot Seat Mode — Two players on same device</p>
-          </div>
-        )}
       </div>
-
-      {/* bottom section removed per request */}
     </div>
   )
 }

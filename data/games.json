@@ -330,7 +330,7 @@
     "2025.11.21(34)": {
       "id": "2025.11.21(34)",
       "createdAt": "2025-11-21T11:24:05.492Z",
-      "updatedAt": "2025-11-21T11:30:41.126Z",
+      "updatedAt": "2025-11-21T11:49:31.957Z",
       "status": "active",
       "variant": "standard",
       "players": {
@@ -341,7 +341,7 @@
       "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
       "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"] *",
       "clocks": {
-        "whiteMs": 9502,
+        "whiteMs": 2752,
         "blackMs": 0
       },
       "moves": []
