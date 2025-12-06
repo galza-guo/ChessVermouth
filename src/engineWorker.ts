@@ -2,7 +2,7 @@ import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { parseBestMoveLine, parseInfoLine, LineEvaluation, Score } from './uci.js';
+import { parseBestMoveLine, parseInfoLine, LineEvaluation, Score, WDL } from './uci.js';
 
 const DEFAULT_READY_TIMEOUT_MS = 5000;
 const DEFAULT_SEARCH_TIMEOUT_MS = 10000;
@@ -30,6 +30,7 @@ export interface WorkerInfoEvent {
   multipv: number;
   depth?: number;
   score?: Score;
+  wdl?: WDL;
   pv: string[];
   nps?: number;
   nodes?: number;
@@ -65,6 +66,7 @@ export class EngineWorker {
       Hash: this.config.hash,
       MultiPV: this.config.defaultMultiPv,
       EvalFile: this.config.evalFile,
+      UCI_ShowWDL: true,
     });
   }
 
@@ -124,7 +126,7 @@ export class EngineWorker {
     return this.readyPromise;
   }
 
-  async configure(options: { Threads?: number; Hash?: number; MultiPV?: number; EvalFile?: string }): Promise<void> {
+  async configure(options: { Threads?: number; Hash?: number; MultiPV?: number; EvalFile?: string; UCI_ShowWDL?: boolean }): Promise<void> {
     if (!this.child) await this.init();
     for (const [name, value] of Object.entries(options)) {
       if (value === undefined) continue;
@@ -182,6 +184,7 @@ export class EngineWorker {
         depth: parsed.depth,
         pv: parsed.pv ?? [],
         score: parsed.score,
+        wdl: parsed.wdl,
         nps: parsed.nps,
         nodes: parsed.nodes,
       };
@@ -192,6 +195,7 @@ export class EngineWorker {
           depth: parsed.depth,
           pv: parsed.pv ?? [],
           score: parsed.score,
+          wdl: parsed.wdl,
           nps: parsed.nps,
           nodes: parsed.nodes,
         });

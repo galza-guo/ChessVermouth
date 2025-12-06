@@ -23,6 +23,7 @@ export class EngineWorker {
             Hash: this.config.hash,
             MultiPV: this.config.defaultMultiPv,
             EvalFile: this.config.evalFile,
+            UCI_ShowWDL: true,
         });
     }
     async spawnProcess() {
@@ -132,6 +133,7 @@ export class EngineWorker {
                 depth: parsed.depth,
                 pv: parsed.pv ?? [],
                 score: parsed.score,
+                wdl: parsed.wdl,
                 nps: parsed.nps,
                 nodes: parsed.nodes,
             };
@@ -142,6 +144,7 @@ export class EngineWorker {
                     depth: parsed.depth,
                     pv: parsed.pv ?? [],
                     score: parsed.score,
+                    wdl: parsed.wdl,
                     nps: parsed.nps,
                     nodes: parsed.nodes,
                 });

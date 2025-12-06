@@ -104,7 +104,7 @@ export async function createServer() {
     const abortController = new AbortController();
     socket.on('close', () => abortController.abort());
 
-    const sendInfo = (info: { multipv: number; depth?: number; pv: string[]; score?: unknown; nps?: number; nodes?: number }) => {
+    const sendInfo = (info: { multipv: number; depth?: number; pv: string[]; score?: unknown; wdl?: unknown; nps?: number; nodes?: number }) => {
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(
           JSON.stringify({
@@ -113,6 +113,7 @@ export async function createServer() {
             depth: info.depth,
             pv: info.pv.join(' '),
             score: info.score ?? null,
+            wdl: info.wdl ?? null,
             nps: info.nps,
             nodes: info.nodes,
           }),
@@ -120,7 +121,7 @@ export async function createServer() {
       }
     };
 
-    const sendResultAndClose = (result: { bestmove: string; lines: { pv: string[]; score?: unknown; depth?: number }[] }) => {
+    const sendResultAndClose = (result: { bestmove: string; lines: { pv: string[]; score?: unknown; wdl?: unknown; depth?: number }[] }) => {
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(
           JSON.stringify({
@@ -129,6 +130,7 @@ export async function createServer() {
             lines: result.lines.map((line) => ({
               pv: line.pv.join(' '),
               score: line.score ?? null,
+              wdl: line.wdl ?? null,
               depth: line.depth,
             })),
           }),

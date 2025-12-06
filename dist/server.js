@@ -91,6 +91,7 @@ export async function createServer() {
                     depth: info.depth,
                     pv: info.pv.join(' '),
                     score: info.score ?? null,
+                    wdl: info.wdl ?? null,
                     nps: info.nps,
                     nodes: info.nodes,
                 }));
@@ -104,6 +105,7 @@ export async function createServer() {
                     lines: result.lines.map((line) => ({
                         pv: line.pv.join(' '),
                         score: line.score ?? null,
+                        wdl: line.wdl ?? null,
                         depth: line.depth,
                     })),
                 }));

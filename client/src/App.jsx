@@ -14,6 +14,7 @@ import ConfirmDialog from './components/ConfirmDialog'
 import GVImage from './assets/images/G&V.webp'
 import BoyImage from './assets/images/boy.webp'
 import GirlImage from './assets/images/girl.webp'
+import SaveIcon from './assets/images/save-icon.png'
 import IconEmoji from './assets/icons/Emoji.png'
 import IconEmojiOn from './assets/icons/Emoji-on.png'
 import IconUndo from './assets/icons/Undo.png'
@@ -183,22 +184,25 @@ function App() {
       : 'No saved state yet'
     if (saveStatus.state === 'saving') {
       return (
-        <span className='inline-flex items-center gap-1 text-xs text-amber-300' title={title}>
-          <svg className='h-3 w-3 animate-spin' viewBox='0 0 24 24' fill='none'>
-            <circle cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='2' strokeOpacity='0.3' />
-            <path d='M22 12a10 10 0 0 0-10-10' stroke='currentColor' strokeWidth='2' strokeLinecap='round' />
-          </svg>
-          <span>Saving…</span>
+        <span className='inline-flex items-center' title={title}>
+          <img 
+            src={SaveIcon} 
+            alt='Saving' 
+            className='h-4 w-4 animate-pulse opacity-80'
+            style={{ filter: 'invert(67%) sepia(74%) saturate(500%) hue-rotate(7deg) brightness(98%) contrast(98%)' }}
+          />
         </span>
       )
     }
     if (saveStatus.state === 'idle' && !saveStatus.timestamp) return null
     return (
-      <span className='inline-flex items-center gap-1 text-xs text-emerald-300' title={title}>
-        <svg className='h-3 w-3' viewBox='0 0 24 24' fill='none'>
-          <path d='M5 13l4 4L19 7' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' />
-        </svg>
-        <span>Saved</span>
+      <span className='inline-flex items-center' title={title}>
+        <img 
+          src={SaveIcon} 
+          alt='Saved' 
+          className='h-4 w-4 opacity-80'
+          style={{ filter: 'invert(61%) sepia(50%) saturate(500%) hue-rotate(100deg) brightness(92%) contrast(86%)' }}
+        />
       </span>
     )
   }, [saveStatus])
@@ -1012,7 +1016,7 @@ function App() {
             {status === 'waiting' && <span className='badge-warn'>Waiting</span>}
           </div>
           <div className='relative flex items-center gap-3 text-xs text-zinc-400'>
-            {turn && <span>Turn: <span className='text-emerald-400 font-medium'>{turn === 'w' ? 'White' : 'Black'}</span></span>}
+            {saveIndicator}
             {!isHotSeatMode && gameId && status === 'ready' && (
               <span>Session: <span className='font-mono text-emerald-400'>{gameId}</span></span>
             )}
@@ -1127,9 +1131,7 @@ function App() {
               </>
             )
           })()}
-          <div className='w-full flex justify-start px-1'>
-            {saveIndicator}
-          </div>
+
         </div>
 
         {/* Game Lobby overlay (does not affect ControlPanel) */}
@@ -1678,7 +1680,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
           if (msg.type === 'info') {
             setAiLines((prev) => {
               const next = [...prev]
-              const line = { multipv: msg.multipv, depth: msg.depth, pv: msg.pv, score: msg.score }
+              const line = { multipv: msg.multipv, depth: msg.depth, pv: msg.pv, score: msg.score, wdl: msg.wdl }
               const idx = next.findIndex((l) => l.multipv === line.multipv)
               if (idx >= 0) next[idx] = line
               else next.push(line)
@@ -1688,7 +1690,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
           } else if (msg.type === 'result') {
             setAiBest(msg.bestmove)
             if (Array.isArray(msg.lines)) {
-              const mapped = msg.lines.map((l, i) => ({ multipv: i + 1, depth: l.depth, pv: l.pv, score: l.score }))
+              const mapped = msg.lines.map((l, i) => ({ multipv: i + 1, depth: l.depth, pv: l.pv, score: l.score, wdl: l.wdl }))
               setAiLines(mapped)
             }
             setAiBusy(false)
@@ -1767,6 +1769,13 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
     }
   }
 
+  // Auto-update analysis when history changes while AnalysisView is open
+  useEffect(() => {
+    if (panelView === 'AnalysisView' && !aiBusy) {
+      startAi()
+    }
+  }, [history.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Toggle EmojiView similar to AI button
   const toggleEmoji = () => {
     if (panelView !== 'EmojiView') {
@@ -1783,9 +1792,30 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
 
   useEffect(() => () => closeAiWs(), [closeAiWs])
 
+  // Determine player color for theming
+  const playerColor = isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : (color || 'white')
+  const isWhitePlayer = playerColor === 'white'
+
+  // Panel theming based on player color
+  const panelBg = isWhitePlayer
+    ? 'linear-gradient(135deg, rgba(245,245,245,0.92) 0%, rgba(230,230,230,0.88) 100%)'
+    : 'linear-gradient(135deg, rgba(30,30,30,0.92) 0%, rgba(18,18,20,0.95) 100%)'
+  const panelBorder = isWhitePlayer ? 'rgba(200,200,200,0.4)' : 'rgba(80,80,80,0.4)'
+  const textColorClass = isWhitePlayer ? 'text-zinc-900' : 'text-white'
+
   return (
-    <div className='glass-panel w-full p-4 flex flex-col gap-4'>
-      <div className='flex flex-row flex-nowrap gap-4 items-start w-full'>
+    <div 
+      className={`w-full p-4 flex flex-col gap-4 rounded-xl border backdrop-blur-md ${textColorClass}`}
+      style={{ 
+        maxWidth: 'min(92vw, 500px)',
+        background: panelBg,
+        borderColor: panelBorder,
+        boxShadow: isWhitePlayer 
+          ? '0 4px 16px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.5)' 
+          : '0 4px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)',
+      }}
+    >
+      <div className='flex flex-row flex-nowrap gap-4 items-stretch w-full flex-1'>
         {/* Left: vertical icon-only actions */}
         <div className='flex flex-col items-start gap-2 shrink-0 p-2 -m-2'>
           {/* Emoji (ViewWindow toggle) */}
@@ -1793,14 +1823,14 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <button
               type='button'
               aria-label='Emoji'
-              className={`neo-btn neo-btn-toggle ${panelView === 'EmojiView' ? 'emoji-active' : ''}`}
+              className={`neo-btn neo-btn-toggle ${panelView === 'EmojiView' ? 'emoji-active' : ''} ${isWhitePlayer ? 'neo-btn-light' : ''}`}
               aria-pressed={panelView === 'EmojiView'}
               onClick={toggleEmoji}
             >
               <img
                 src={panelView === 'EmojiView' ? IconEmojiOn : IconEmoji}
                 alt='' aria-hidden='true'
-                className={`h-5 w-auto object-contain ${panelView === 'EmojiView' ? '' : 'brightness-0 invert'}`}
+                className={`h-5 w-auto object-contain ${panelView === 'EmojiView' ? '' : (isWhitePlayer ? 'brightness-0' : 'brightness-0 invert')}`}
               />
             </button>
             <span
@@ -1815,14 +1845,14 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <button
               type='button'
               aria-label='Analyse'
-              className={`neo-btn neo-btn-toggle ${panelView === 'AnalysisView' ? 'analyze-active' : ''}`}
+              className={`neo-btn neo-btn-toggle ${panelView === 'AnalysisView' ? 'analyze-active' : ''} ${isWhitePlayer ? 'neo-btn-light' : ''}`}
               aria-pressed={panelView === 'AnalysisView'}
               onClick={toggleAi}
             >
               <img
                 src={panelView === 'AnalysisView' ? IconAnalyseOn : IconAI}
                 alt='' aria-hidden='true'
-                className={`h-5 w-auto object-contain ${panelView === 'AnalysisView' ? '' : 'brightness-0 invert'}`}
+                className={`h-5 w-auto object-contain ${panelView === 'AnalysisView' ? '' : (isWhitePlayer ? 'brightness-0' : 'brightness-0 invert')}`}
               />
             </button>
             <span
@@ -1837,10 +1867,10 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <button
               type='button'
               aria-label='Undo'
-              className='neo-btn'
+              className={`neo-btn ${isWhitePlayer ? 'neo-btn-light' : ''}`}
               onClick={handleUndo}
             >
-              <img src={IconUndo} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
+              <img src={IconUndo} alt='' aria-hidden='true' className={`h-5 w-auto object-contain ${isWhitePlayer ? 'brightness-0' : 'brightness-0 invert'}`} />
             </button>
             <span
               role='tooltip'
@@ -1861,21 +1891,21 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             ref={tableEnd}
             role='region'
             aria-label={panelView === 'AnalysisView' ? 'AI Analysis' : (panelView === 'EmojiView' ? 'Emoji' : 'Move List')}
-            className='relative h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'
+            className={`relative flex-1 overflow-auto rounded-lg border p-2 select-text ${isWhitePlayer ? 'border-zinc-300/50 bg-white/50' : 'border-white/10 bg-white/5'}`}
           >
             {/* MoveListView */}
             {panelView === 'MoveListView' && (
               <>
                 {history.length === 0 ? (
-                  <div className='text-xs text-zinc-400'>No moves yet</div>
+                  <div className={`text-xs ${isWhitePlayer ? 'text-zinc-500' : 'text-zinc-400'}`}>No moves yet</div>
                 ) : (
                   <table className='w-full table-fixed'>
                     <tbody>
                     {history.map((move, i) => {
                       if (i % 2 === 0) {
                         return (
-                          <tr key={i} className='text-center font-semibold text-sm text-white/90'>
-                            <td className='w-10 font-normal text-gray-400'>{i / 2 + 1}.</td>
+                          <tr key={i} className={`text-center font-semibold text-sm ${isWhitePlayer ? 'text-zinc-900' : 'text-white/90'}`}>
+                            <td className={`w-10 font-normal ${isWhitePlayer ? 'text-zinc-500' : 'text-gray-400'}`}>{i / 2 + 1}.</td>
                             <td className='px-2'>{move.san}</td>
                             <td className='px-2'>{history[i + 1]?.san}</td>
                           </tr>
@@ -1904,9 +1934,14 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             {/* AnalysisView */}
             {panelView === 'AnalysisView' && (
               <div className='space-y-2 text-sm'>
-                <div className='flex items-center justify-end gap-2 mb-1'>
-                  {aiBusy && <span className='text-amber-300'>Thinking…</span>}
-                  {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
+                <div className='flex items-center justify-between gap-2 mb-1'>
+                  <span className='text-xs text-zinc-400'>
+                    Best for: <span className={turn === 'w' ? 'text-white font-medium' : 'text-zinc-300 font-medium'}>{turn === 'w' ? 'White' : 'Black'}</span>
+                  </span>
+                  <div className='flex items-center gap-2'>
+                    {aiBusy && <span className='text-amber-300'>Thinking…</span>}
+                    {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
+                  </div>
                 </div>
                 {aiError && <div className='text-red-400 mb-2'>Error: {aiError}</div>}
                 <div className='space-y-1'>
@@ -1914,9 +1949,23 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
                     <div className='text-zinc-400'>Waiting for lines…</div>
                   )}
                   {aiLines.map((l) => (
-                    <div key={l.multipv} className='flex items-center justify-between'>
-                      <div className='text-zinc-300'>#{l.multipv} d{l.depth ?? '-'} — <span className='font-mono'>{formatScore(l.score)}</span></div>
-                      <div className='truncate font-mono text-white/90 ml-2' title={l.pv}>{l.pv}</div>
+                    <div key={l.multipv} className='space-y-0.5'>
+                      <div className='flex items-center justify-between'>
+                        <div className='text-zinc-300'>#{l.multipv} d{l.depth ?? '-'} — <span className='font-mono'>{formatScore(l.score)}</span></div>
+                        <div className='truncate font-mono text-white/90 ml-2' title={l.pv}>{l.pv}</div>
+                      </div>
+                      {l.wdl && (
+                        <div className='flex items-center gap-2'>
+                          <div className='flex-1 h-2 rounded overflow-hidden flex'>
+                            <div className='bg-white' style={{ width: `${l.wdl.win / 10}%` }} title={`Win: ${(l.wdl.win / 10).toFixed(1)}%`} />
+                            <div className='bg-zinc-500' style={{ width: `${l.wdl.draw / 10}%` }} title={`Draw: ${(l.wdl.draw / 10).toFixed(1)}%`} />
+                            <div className='bg-zinc-900' style={{ width: `${l.wdl.loss / 10}%` }} title={`Loss: ${(l.wdl.loss / 10).toFixed(1)}%`} />
+                          </div>
+                          <div className='text-[10px] text-zinc-400 font-mono whitespace-nowrap'>
+                            {(l.wdl.win / 10).toFixed(0)}% / {(l.wdl.draw / 10).toFixed(0)}% / {(l.wdl.loss / 10).toFixed(0)}%
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1946,16 +1995,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             </div>
           )}
         </div>
-        {status === 'ready' && !isHotSeatMode && (
-          <div className='text-xs text-zinc-400'>
-            <p>Connected to Session: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
-          </div>
-        )}
-        {isHotSeatMode && (
-          <div className='text-xs text-zinc-400'>
-            <p>Hot Seat Mode — Two players on same device</p>
-          </div>
-        )}
+
         {/* Analysis panel removed; AnalysisView now lives inside the ViewWindow above */}
         </div>
 

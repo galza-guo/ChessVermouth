@@ -2,11 +2,18 @@ export type Score =
   | { type: 'cp'; value: number }
   | { type: 'mate'; value: number };
 
+export interface WDL {
+  win: number;   // per-mill (0-1000)
+  draw: number;  // per-mill (0-1000)
+  loss: number;  // per-mill (0-1000)
+}
+
 export interface InfoLine {
   depth?: number;
   seldepth?: number;
   multipv?: number;
   score?: Score;
+  wdl?: WDL;
   pv?: string[];
   nps?: number;
   nodes?: number;
@@ -26,6 +33,7 @@ export interface LineEvaluation {
   multipv: number;
   depth?: number;
   score?: Score;
+  wdl?: WDL;
   pv: string[];
   nps?: number;
   nodes?: number;
@@ -79,6 +87,20 @@ export function parseInfoLine(line: string): InfoLine | null {
       case 'nodes': {
         const next = tokens[++i];
         if (next) info.nodes = Number.parseInt(next, 10);
+        break;
+      }
+      case 'wdl': {
+        // WDL format: wdl <win> <draw> <loss> (per-mill values)
+        const win = tokens[++i];
+        const draw = tokens[++i];
+        const loss = tokens[++i];
+        if (win && draw && loss) {
+          info.wdl = {
+            win: Number.parseInt(win, 10),
+            draw: Number.parseInt(draw, 10),
+            loss: Number.parseInt(loss, 10),
+          };
+        }
         break;
       }
       default:

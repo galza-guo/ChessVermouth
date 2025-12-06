@@ -467,16 +467,7 @@ export default function ControlPanel({ history, tableEnd, socket, status, gameId
             )}
           </div>
         </div>
-        {status === 'ready' && !isHotSeatMode && (
-          <div className='text-xs text-zinc-400'>
-            <p>Connected to Session: <span className='text-emerald-400 font-mono'>{gameId}</span></p>
-          </div>
-        )}
-        {isHotSeatMode && (
-          <div className='text-xs text-zinc-400'>
-            <p>Hot Seat Mode — Two players on same device</p>
-          </div>
-        )}
+
       </div>
 
 

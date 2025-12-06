@@ -54,6 +54,20 @@ export function parseInfoLine(line) {
                     info.nodes = Number.parseInt(next, 10);
                 break;
             }
+            case 'wdl': {
+                // WDL format: wdl <win> <draw> <loss> (per-mill values)
+                const win = tokens[++i];
+                const draw = tokens[++i];
+                const loss = tokens[++i];
+                if (win && draw && loss) {
+                    info.wdl = {
+                        win: Number.parseInt(win, 10),
+                        draw: Number.parseInt(draw, 10),
+                        loss: Number.parseInt(loss, 10),
+                    };
+                }
+                break;
+            }
             default:
                 // skip unknown token by continuing
                 break;
