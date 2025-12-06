@@ -330,7 +330,7 @@
     "2025.11.21(34)": {
       "id": "2025.11.21(34)",
       "createdAt": "2025-11-21T11:24:05.492Z",
-      "updatedAt": "2025-11-21T11:49:31.957Z",
+      "updatedAt": "2025-11-21T14:53:29.825Z",
       "status": "active",
       "variant": "standard",
       "players": {
@@ -338,13 +338,20 @@
         "opponentName": null
       },
       "startFEN": "startpos",
-      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"] *",
+      "fen": "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1",
+      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"]1. d4 *",
       "clocks": {
-        "whiteMs": 2752,
+        "whiteMs": 102001,
         "blackMs": 0
       },
-      "moves": []
+      "moves": [
+        {
+          "ply": 1,
+          "uci": "d2d4",
+          "san": "d4",
+          "ts": "2025-11-21T14:53:29.825Z"
+        }
+      ]
     }
   },
   "counters": {

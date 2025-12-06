@@ -1,3 +1,4 @@
+import AnimatedPiece from './components/AnimatedPiece';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import useSound from 'use-sound'
@@ -134,6 +135,7 @@ function App() {
   const playerNameRef = useRef(playerName)
   const gameIdRef = useRef(gameId)
   const connectingRef = useRef(false)
+  const [animatedPiece, setAnimatedPiece] = useState(null);
   useEffect(() => { clockLatestRef.current = clockLatest }, [clockLatest])
   useEffect(() => { playerNameRef.current = playerName }, [playerName])
   useEffect(() => { gameIdRef.current = gameId }, [gameId])
@@ -486,29 +488,36 @@ function App() {
     if (isHotSeatMode) {
       // Hot seat mode: handle moves locally
       if (hotSeatGame && hotSeatGame.turn() === hotSeatCurrentPlayer[0]) {
-        setSaveStatus({ state: 'saving', timestamp: Date.now() })
-        try {
-          let result = hotSeatGame.move(move)
-          if (result) {
-            // Check for pawn promotion
-            if (result.flags && result.flags.includes('p')) {
-              // Undo and prompt for promotion choice
-              hotSeatGame.undo()
-              setPromotionRequired(true)
-              setPromotionData({
-                square: result.to,
-                color: result.color, // 'w' or 'b'
-                move: move,
-                from: result.from
-              })
-            } else {
-              // Regular move - update position
-              updateHotSeatPosition()
+        const from = move.substring(0, 2);
+        const to = move.substring(2, 4);
+        const piece = hotSeatGame.get(from);
+        setAnimatedPiece({ piece, from, to });
+        setTimeout(() => {
+          setSaveStatus({ state: 'saving', timestamp: Date.now() })
+          try {
+            let result = hotSeatGame.move(move)
+            if (result) {
+              // Check for pawn promotion
+              if (result.flags && result.flags.includes('p')) {
+                // Undo and prompt for promotion choice
+                hotSeatGame.undo()
+                setPromotionRequired(true)
+                setPromotionData({
+                  square: result.to,
+                  color: result.color, // 'w' or 'b'
+                  move: move,
+                  from: result.from
+                })
+              } else {
+                // Regular move - update position
+                updateHotSeatPosition()
+              }
             }
+          } catch (error) {
+            console.log('Invalid move:', error.message)
           }
-        } catch (error) {
-          console.log('Invalid move:', error.message)
-        }
+          setAnimatedPiece(null);
+        }, 200);
       }
     } else {
       // Network mode: existing logic
@@ -1028,7 +1037,15 @@ function App() {
       {/* Main Content */}
       <main className='mx-auto max-w-5xl w-full p-4 grid grid-cols-1 gap-4 items-start justify-items-center'>
         <div className='flex flex-col items-center justify-center gap-2 w-full'>
-          {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color, emojiBursts })}
+          {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color, emojiBursts, animatedPiece })}
+          {animatedPiece && (
+            <AnimatedPiece
+              piece={animatedPiece.piece}
+              from={animatedPiece.from}
+              to={animatedPiece.to}
+              icons={icons}
+            />
+          )}
           <div className='w-full flex justify-start px-1'>
             {saveIndicator}
           </div>
@@ -1191,7 +1208,7 @@ function App() {
   )
 }
 
-function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts}) {
+function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts, animatedPiece}) {
   let numToLetter = ["a", "b", "c", "d", "e", "f", "g", "h"]
 
   let boardArr = []
@@ -1203,10 +1220,13 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
     for(let j = 0; j < board.length; j++) {
       let rowInd = (color === 'white' ? j : 7 - j)
       let square = row[rowInd]
+      const coord = `${numToLetter[rowInd]}${8 - boardInd}`
+      if (animatedPiece && animatedPiece.from === coord) {
+        square = null
+      }
 
       let bgColor = (rowInd + boardInd) % 2 === 1 ? 'bg-[#739552]' : 'bg-[#EBECD0]'
       let textColor = (rowInd + boardInd) % 2 === 0 ? 'text-[#739552]' : 'text-[#EBECD0]'
-      let coord = `${numToLetter[rowInd]}${8 - boardInd}`
       boardArr.push(
         <div key={coord} onDrop={handleDrop} onDragOver={(e) => { e.preventDefault(); }} className={`relative square flex flex-col ${bgColor} ${textColor}`} data-square={coord} onClick={handleSquareClick}>
           {rowInd === (color === 'white' ? 0 : 7) && <div data-square={coord} className='absolute text-xs font-semibold left-[3%]'>{8 - boardInd}</div>}

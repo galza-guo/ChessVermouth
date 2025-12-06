@@ -2,6 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+.piece-animation-enter {
+  opacity: 0;
+  transform: scale(0.9);
+}
+.piece-animation-enter-active {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  transition: opacity 300ms, transform 300ms;
+}
+.piece-animation-exit {
+  opacity: 1;
+}
+.piece-animation-exit-active {
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 300ms, transform 300ms;
+}
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
