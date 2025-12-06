@@ -498,7 +498,7 @@
     "2025.12.06(03)": {
       "id": "2025.12.06(03)",
       "createdAt": "2025-12-06T13:38:13.526Z",
-      "updatedAt": "2025-12-06T22:54:50.981Z",
+      "updatedAt": "2025-12-06T22:59:02.419Z",
       "status": "active",
       "variant": "standard",
       "players": {
@@ -506,36 +506,24 @@
         "opponentName": null
       },
       "startFEN": "startpos",
-      "fen": "rnbqkbnr/pppp2pp/8/4pp2/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
-      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"]1. e4 e5 2. Nf3 f5 *",
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2",
+      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"]1. f3 d5 *",
       "clocks": {
-        "whiteMs": 1001,
-        "blackMs": 0
+        "whiteMs": 90511,
+        "blackMs": 2991
       },
       "moves": [
         {
           "ply": 1,
-          "uci": "e2e4",
-          "san": "e4",
-          "ts": "2025-12-06T22:54:50.981Z"
+          "uci": "f2f3",
+          "san": "f3",
+          "ts": "2025-12-06T22:59:02.419Z"
         },
         {
           "ply": 2,
-          "uci": "e7e5",
-          "san": "e5",
-          "ts": "2025-12-06T22:54:50.981Z"
-        },
-        {
-          "ply": 3,
-          "uci": "g1f3",
-          "san": "Nf3",
-          "ts": "2025-12-06T22:54:50.981Z"
-        },
-        {
-          "ply": 4,
-          "uci": "f7f5",
-          "san": "f5",
-          "ts": "2025-12-06T22:54:50.981Z"
+          "uci": "d7d5",
+          "san": "d5",
+          "ts": "2025-12-06T22:59:02.419Z"
         }
       ]
     }
