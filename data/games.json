@@ -494,12 +494,38 @@
           "ts": "2025-12-06T12:30:13.618Z"
         }
       ]
+    },
+    "2025.12.06(03)": {
+      "id": "2025.12.06(03)",
+      "createdAt": "2025-12-06T13:38:13.526Z",
+      "updatedAt": "2025-12-06T22:20:08.046Z",
+      "status": "active",
+      "variant": "standard",
+      "players": {
+        "hostName": null,
+        "opponentName": null
+      },
+      "startFEN": "startpos",
+      "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"]1. e4 *",
+      "clocks": {
+        "whiteMs": 1751,
+        "blackMs": 0
+      },
+      "moves": [
+        {
+          "ply": 1,
+          "uci": "e2e4",
+          "san": "e4",
+          "ts": "2025-12-06T22:20:08.046Z"
+        }
+      ]
     }
   },
   "counters": {
     "2025.10.10": 1,
     "2025.11.20": 2,
     "2025.11.21": 34,
-    "2025.12.06": 2
+    "2025.12.06": 3
   }
 }

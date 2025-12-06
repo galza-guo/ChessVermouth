@@ -54,6 +54,9 @@ function App() {
     gameOver: gameOverSound
   }), [moveSound, checkSound, captureSound, castleSound, gameOverSound])
 
+  // Best move arrow for chessboard (updated by ControlPanel)
+  const [bestMoveArrow, setBestMoveArrow] = useState(null)
+
   // Socket connection for network mode
   const [socket, setSocket] = useState(null)
   const [serverPort, setServerPort] = useState(() => {
@@ -1109,7 +1112,7 @@ function App() {
                   icons={icons}
                   isTop={true}
                 />
-                {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: playerColor, emojiBursts, animatedPiece })}
+                {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: playerColor, emojiBursts, animatedPiece, bestMoveArrow })}
                 {animatedPiece && (
                   <AnimatedPiece
                     piece={animatedPiece.piece}
@@ -1190,6 +1193,7 @@ function App() {
           onRequestLeave={() => setLeaveConfirmOpen(true)}
           onSendEmoji={sendEmoji}
           onClockUpdate={setClockLatest}
+          onBestMoveChange={setBestMoveArrow}
         />
       </main>
 
@@ -1291,8 +1295,84 @@ function App() {
   )
 }
 
-function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts, animatedPiece}) {
+function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts, animatedPiece, bestMoveArrow}) {
   let numToLetter = ["a", "b", "c", "d", "e", "f", "g", "h"]
+
+  // Parse best move arrow (e.g., "e2e4" or "g1f3")
+  const parseArrow = (move) => {
+    if (!move || move.length < 4) return null
+    const from = move.slice(0, 2)
+    const to = move.slice(2, 4)
+    return { from, to }
+  }
+
+  // Convert square name to board percentage (0-100)
+  const squareToPercent = (sq) => {
+    const file = sq.charCodeAt(0) - 97 // a=0, h=7
+    const rank = parseInt(sq[1]) - 1   // 1=0, 8=7
+    const fileIdx = color === 'white' ? file : 7 - file
+    const rankIdx = color === 'white' ? 7 - rank : rank
+    return {
+      x: (fileIdx + 0.5) * 12.5, // center of square
+      y: (rankIdx + 0.5) * 12.5
+    }
+  }
+
+  const arrowData = parseArrow(bestMoveArrow)
+  let arrowSvg = null
+  if (arrowData) {
+    const fromPos = squareToPercent(arrowData.from)
+    const toPos = squareToPercent(arrowData.to)
+    
+    // Calculate arrow path
+    const dx = toPos.x - fromPos.x
+    const dy = toPos.y - fromPos.y
+    const len = Math.sqrt(dx * dx + dy * dy)
+    const headLen = 3 // arrowhead length in %
+    const headWidth = 2.5 // arrowhead width in %
+    const lineWidth = 1.2 // line width in %
+    
+    // Shorten line to account for arrowhead
+    const ratio = (len - headLen) / len
+    const midX = fromPos.x + dx * ratio
+    const midY = fromPos.y + dy * ratio
+    
+    // Unit direction
+    const ux = dx / len
+    const uy = dy / len
+    
+    // Perpendicular for arrowhead
+    const px = -uy * headWidth / 2
+    const py = ux * headWidth / 2
+    
+    arrowSvg = (
+      <svg
+        className='absolute inset-0 w-full h-full pointer-events-none z-30'
+        viewBox='0 0 100 100'
+        preserveAspectRatio='none'
+      >
+        {/* Arrow line */}
+        <line
+          x1={fromPos.x}
+          y1={fromPos.y}
+          x2={midX}
+          y2={midY}
+          stroke='rgba(16, 185, 129, 0.6)'
+          strokeWidth={lineWidth}
+          strokeLinecap='round'
+        />
+        {/* Arrowhead */}
+        <polygon
+          points={`
+            ${toPos.x},${toPos.y}
+            ${midX + px},${midY + py}
+            ${midX - px},${midY - py}
+          `}
+          fill='rgba(16, 185, 129, 0.6)'
+        />
+      </svg>
+    )
+  }
 
   let boardArr = []
 
@@ -1332,6 +1412,8 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
   return (
     <div id="board" className='relative grid-rows-8 grid-cols-8 grid grabbable text-black'>
       {boardArr}
+      {/* Best move arrow overlay */}
+      {arrowSvg}
       {/* Emoji overlays (transient). Positioned in board-relative percentages. */}
       {Array.isArray(emojiBursts) && emojiBursts.map((e) => (
         <img
@@ -1359,6 +1441,7 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
     </div>
   )
 }
+
 
 //highights squares and displays moves on the board
 function squareUnderlay({ square, coord, history, availableMoves, isCheck, turn, selectedSquare }) {
@@ -1515,7 +1598,7 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
   )
 }
 
-function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate }) {
+function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate, onBestMoveChange }) {
   // ViewWindow: versatile middle panel (MoveListView | AnalysisView | EmojiView)
   const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
@@ -1618,7 +1701,17 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
   const [aiError, setAiError] = useState(null)
   const [aiBest, setAiBest] = useState(null)
   const [aiLines, setAiLines] = useState([])
+  const [aiExplanation, setAiExplanation] = useState(null)
+  const [aiLlmFailed, setAiLlmFailed] = useState(false)
+  const [aiTypedText, setAiTypedText] = useState('')
   const aiWsRef = useRef(null)
+
+  // Update best move arrow when analysis is active
+  useEffect(() => {
+    if (onBestMoveChange) {
+      onBestMoveChange(panelView === 'AnalysisView' && aiBest ? aiBest : null)
+    }
+  }, [panelView, aiBest, onBestMoveChange])
 
   // --- Emoji assets (thumbnails) ---
   const emojiImages = useMemo(() => {
@@ -1660,6 +1753,9 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
     setAiError(null)
     setAiBest(null)
     setAiLines([])
+    setAiExplanation(null)
+    setAiLlmFailed(false)
+    setAiTypedText('')
     setAiBusy(true)
     const movesArr = uciFromHistory(history)
     const wsProto = (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:') ? 'wss' : 'ws'
@@ -1689,6 +1785,13 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             })
           } else if (msg.type === 'result') {
             setAiBest(msg.bestmove)
+            if (msg.explanation) {
+              setAiExplanation(msg.explanation)
+              setAiLlmFailed(false)
+            } else {
+              // No explanation means LLM failed
+              setAiLlmFailed(true)
+            }
             if (Array.isArray(msg.lines)) {
               const mapped = msg.lines.map((l, i) => ({ multipv: i + 1, depth: l.depth, pv: l.pv, score: l.score, wdl: l.wdl }))
               setAiLines(mapped)
@@ -1791,6 +1894,25 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
   }
 
   useEffect(() => () => closeAiWs(), [closeAiWs])
+
+  // Typewriter effect for LLM explanation
+  useEffect(() => {
+    if (!aiExplanation) {
+      setAiTypedText('')
+      return
+    }
+    let index = 0
+    setAiTypedText('')
+    const interval = setInterval(() => {
+      if (index < aiExplanation.length) {
+        setAiTypedText(aiExplanation.slice(0, index + 1))
+        index++
+      } else {
+        clearInterval(interval)
+      }
+    }, 30) // 30ms per character
+    return () => clearInterval(interval)
+  }, [aiExplanation])
 
   // Determine player color for theming
   const playerColor = isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : (color || 'white')
@@ -1934,41 +2056,62 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             {/* AnalysisView */}
             {panelView === 'AnalysisView' && (
               <div className='space-y-2 text-sm'>
-                <div className='flex items-center justify-between gap-2 mb-1'>
-                  <span className='text-xs text-zinc-400'>
-                    Best for: <span className={turn === 'w' ? 'text-white font-medium' : 'text-zinc-300 font-medium'}>{turn === 'w' ? 'White' : 'Black'}</span>
+                <div className='flex items-center gap-2 mb-1'>
+                  <span className={`text-xs ${isWhitePlayer ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                    Best for {turn === 'w' ? 'White' : 'Black'}:
                   </span>
-                  <div className='flex items-center gap-2'>
-                    {aiBusy && <span className='text-amber-300'>Thinking…</span>}
-                    {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
-                  </div>
+                  {aiBest && (
+                    <span className={`font-mono font-medium ${isWhitePlayer ? 'text-zinc-900' : 'text-white'}`}>{aiBest}</span>
+                  )}
                 </div>
                 {aiError && <div className='text-red-400 mb-2'>Error: {aiError}</div>}
-                <div className='space-y-1'>
-                  {aiLines.length === 0 && !aiError && (
-                    <div className='text-zinc-400'>Waiting for lines…</div>
-                  )}
-                  {aiLines.map((l) => (
-                    <div key={l.multipv} className='space-y-0.5'>
-                      <div className='flex items-center justify-between'>
-                        <div className='text-zinc-300'>#{l.multipv} d{l.depth ?? '-'} — <span className='font-mono'>{formatScore(l.score)}</span></div>
-                        <div className='truncate font-mono text-white/90 ml-2' title={l.pv}>{l.pv}</div>
-                      </div>
-                      {l.wdl && (
-                        <div className='flex items-center gap-2'>
-                          <div className='flex-1 h-2 rounded overflow-hidden flex'>
-                            <div className='bg-white' style={{ width: `${l.wdl.win / 10}%` }} title={`Win: ${(l.wdl.win / 10).toFixed(1)}%`} />
-                            <div className='bg-zinc-500' style={{ width: `${l.wdl.draw / 10}%` }} title={`Draw: ${(l.wdl.draw / 10).toFixed(1)}%`} />
-                            <div className='bg-zinc-900' style={{ width: `${l.wdl.loss / 10}%` }} title={`Loss: ${(l.wdl.loss / 10).toFixed(1)}%`} />
-                          </div>
-                          <div className='text-[10px] text-zinc-400 font-mono whitespace-nowrap'>
-                            {(l.wdl.win / 10).toFixed(0)}% / {(l.wdl.draw / 10).toFixed(0)}% / {(l.wdl.loss / 10).toFixed(0)}%
-                          </div>
+                
+                {/* Pulsing dot while waiting for LLM response */}
+                {aiBusy && (
+                  <div className='flex items-center gap-2'>
+                    <span className={`inline-block w-2 h-2 rounded-full animate-pulse ${isWhitePlayer ? 'bg-amber-500' : 'bg-amber-400'}`} />
+                    <span className={isWhitePlayer ? 'text-zinc-600' : 'text-zinc-400'}>分析中...</span>
+                  </div>
+                )}
+                
+                {/* LLM Explanation with typewriter effect (no green wrap) */}
+                {!aiBusy && aiExplanation && (
+                  <div className={`leading-relaxed ${isWhitePlayer ? 'text-zinc-800' : 'text-zinc-100'}`}>
+                    {aiTypedText}
+                    {aiTypedText.length < aiExplanation.length && (
+                      <span className={`inline-block w-0.5 h-4 ml-0.5 animate-pulse align-middle ${isWhitePlayer ? 'bg-zinc-600' : 'bg-zinc-300'}`} />
+                    )}
+                  </div>
+                )}
+                
+                {/* Fallback: Raw Stockfish data - ONLY if LLM failed */}
+                {!aiBusy && aiLlmFailed && (
+                  <div className='space-y-1'>
+                    {aiLines.length === 0 && !aiError && (
+                      <div className={isWhitePlayer ? 'text-zinc-500' : 'text-zinc-400'}>No analysis available</div>
+                    )}
+                    {aiLines.map((l) => (
+                      <div key={l.multipv} className='space-y-0.5'>
+                        <div className='flex items-center justify-between'>
+                          <div className={isWhitePlayer ? 'text-zinc-700' : 'text-zinc-300'}>#{l.multipv} d{l.depth ?? '-'} — <span className='font-mono'>{formatScore(l.score)}</span></div>
+                          <div className={`truncate font-mono ml-2 ${isWhitePlayer ? 'text-zinc-900' : 'text-white/90'}`} title={l.pv}>{l.pv}</div>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        {l.wdl && (
+                          <div className='flex items-center gap-2'>
+                            <div className='flex-1 h-2 rounded overflow-hidden flex'>
+                              <div className='bg-white' style={{ width: `${l.wdl.win / 10}%` }} title={`Win: ${(l.wdl.win / 10).toFixed(1)}%`} />
+                              <div className='bg-zinc-500' style={{ width: `${l.wdl.draw / 10}%` }} title={`Draw: ${(l.wdl.draw / 10).toFixed(1)}%`} />
+                              <div className='bg-zinc-900' style={{ width: `${l.wdl.loss / 10}%` }} title={`Loss: ${(l.wdl.loss / 10).toFixed(1)}%`} />
+                            </div>
+                            <div className={`text-[10px] font-mono whitespace-nowrap ${isWhitePlayer ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                              {(l.wdl.win / 10).toFixed(0)}% / {(l.wdl.draw / 10).toFixed(0)}% / {(l.wdl.loss / 10).toFixed(0)}%
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -2450,7 +2593,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 }
 
 //render the correct panel based on the game status
-function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji, onClockUpdate }) {
+function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji, onClockUpdate, onBestMoveChange }) {
   // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
   return (
     <ControlPanel
@@ -2476,6 +2619,7 @@ function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gam
       enginePort={enginePort}
       onSendEmoji={onSendEmoji}
       onClockUpdate={onClockUpdate}
+      onBestMoveChange={onBestMoveChange}
     />
   )
 }

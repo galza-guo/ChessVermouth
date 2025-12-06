@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { EnginePool } from './enginePool.js';
 import { GameManager } from './gameManager.js';
 import { registerRoutes } from './api/routes.js';
+import { getConfig as getLLMConfig, explainAnalysis } from './llm.js';
 dotenv.config();
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -97,20 +98,42 @@ export async function createServer() {
                 }));
             }
         };
-        const sendResultAndClose = (result) => {
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'result',
-                    bestmove: result.bestmove,
-                    lines: result.lines.map((line) => ({
-                        pv: line.pv.join(' '),
-                        score: line.score ?? null,
-                        wdl: line.wdl ?? null,
-                        depth: line.depth,
-                    })),
-                }));
-                socket.close(1000, 'analysis complete');
+        const sendResultAndClose = async (result, turnColor, moveHistory) => {
+            if (socket.readyState !== WebSocket.OPEN)
+                return;
+            // Try LLM explanation
+            let explanation = null;
+            const llmConfig = getLLMConfig();
+            if (llmConfig && result.lines.length > 0) {
+                const firstLine = result.lines[0];
+                const llmContext = {
+                    turn: turnColor,
+                    bestMove: result.bestmove,
+                    wdl: firstLine.wdl,
+                    score: firstLine.score,
+                    lines: result.lines.map(l => l.pv.join(' ')),
+                    moveHistory,
+                };
+                try {
+                    explanation = await explainAnalysis(llmConfig, llmContext, abortController.signal);
+                    logger.info({ explanation: explanation.substring(0, 50) }, 'LLM explanation generated');
+                }
+                catch (error) {
+                    logger.warn({ error: error.message }, 'LLM explanation failed, falling back to raw data');
+                }
             }
+            socket.send(JSON.stringify({
+                type: 'result',
+                bestmove: result.bestmove,
+                explanation, // null if LLM failed
+                lines: result.lines.map((line) => ({
+                    pv: line.pv.join(' '),
+                    score: line.score ?? null,
+                    wdl: line.wdl ?? null,
+                    depth: line.depth,
+                })),
+            }));
+            socket.close(1000, 'analysis complete');
         };
         // If a gameId is provided, use the existing game state managed on the server.
         if (gameId) {
@@ -132,7 +155,11 @@ export async function createServer() {
                 onInfo: sendInfo,
                 signal: abortController.signal,
             })
-                .then(sendResultAndClose)
+                .then((result) => {
+                // Determine turn color from move count
+                const turnColor = state.moves.length % 2 === 0 ? 'white' : 'black';
+                return sendResultAndClose(result, turnColor, state.moves);
+            })
                 .catch((error) => {
                 if (socket.readyState === WebSocket.OPEN) {
                     socket.send(JSON.stringify({ type: 'error', message: error.message }));
@@ -155,7 +182,9 @@ export async function createServer() {
                     onInfo: sendInfo,
                     signal: abortController.signal,
                 });
-                sendResultAndClose(result);
+                // Determine turn color
+                const turnColor = directMoves.length % 2 === 0 ? 'white' : 'black';
+                await sendResultAndClose(result, turnColor, directMoves);
             }
             catch (error) {
                 if (socket.readyState === WebSocket.OPEN) {
