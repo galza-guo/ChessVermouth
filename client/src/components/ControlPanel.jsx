@@ -14,14 +14,14 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
     <button
       type='button'
       onClick={onClick}
-      className={`group w-full rounded-lg border border-white/10 backdrop-blur px-3 py-2 text-sm text-white/90 transition-all ${active ? 'bg-white/10 shadow-[0_6px_16px_rgba(0,0,0,0.35)] ring-2 ring-emerald-400/40' : 'bg-white/5 shadow-inner'}`}
+      className={`group w-full rounded-lg border border-white/10 backdrop-blur px-3 py-2 text-sm text-white/90 transition-all ${active ? 'bg-white/10 shadow-[0_6px_16px_rgba(0,0,0,0.35)] ring-2 ring-rt-gold/40' : 'bg-white/5 shadow-inner'}`}
       aria-pressed={active}
     >
       <div className='flex flex-col items-start gap-1'>
-        <span className={`text-[10px] uppercase tracking-wide ${active ? 'text-emerald-300' : 'text-zinc-300'}`}>{label}</span>
+        <span className={`text-[10px] uppercase tracking-wide ${active ? 'text-rt-gold' : 'text-zinc-300'}`}>{label}</span>
         <div style={{ fontVariantNumeric: 'tabular-nums' }} className='font-semibold text-base'>
           {easterEgg ? (
-            <span className='text-emerald-300'>長考之王</span>
+            <span className='text-rt-gold'>長考之王</span>
           ) : (
             <span className='inline-grid' style={{ gridTemplateColumns: '2ch 1ch 2ch' }}>
               <span className='justify-self-end'>{minutes}</span>
@@ -426,7 +426,7 @@ export default function ControlPanel({ history, tableEnd, socket, status, gameId
               <div className='space-y-2 text-sm'>
                 <div className='flex items-center justify-end gap-2 mb-1'>
                   {aiBusy && <span className='text-amber-300'>Thinking…</span>}
-                  {aiBest && <span className='text-emerald-300 font-mono'>best: {aiBest}</span>}
+                  {aiBest && <span className='text-rt-gold font-mono'>best: {aiBest}</span>}
                 </div>
                 {aiError && <div className='text-red-400 mb-2'>Error: {aiError}</div>}
                 <div className='space-y-1'>

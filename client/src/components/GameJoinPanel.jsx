@@ -103,7 +103,7 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
         if (existing) existing.remove()
         const toast = document.createElement('span')
         toast.setAttribute('data-temp-toast', '1')
-        toast.className = 'ml-2 text-xs text-emerald-300 transition-opacity duration-300'
+        toast.className = 'ml-2 text-xs text-rt-gold transition-opacity duration-300'
         toast.style.opacity = '1'
         toast.textContent = msg
         btn.insertAdjacentElement('afterend', toast)
@@ -289,7 +289,7 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
       </div>
       <div className='text-xs text-zinc-300 -mt-2 flex flex-col items-center text-center gap-1'>
         {networkName && (
-        <p>Network: <span className='font-mono text-emerald-400'>{networkName}</span></p>
+        <p>Network: <span className='font-mono text-rt-gold'>{networkName}</span></p>
         )}
         <p className='flex items-center justify-center gap-2'>
           <span>Connect:</span>
@@ -297,14 +297,14 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
             <button
               type='button'
               onClick={handleShareClick}
-              className='font-mono text-emerald-400 underline underline-offset-2 hover:opacity-90 active:opacity-80 bg-transparent p-0 border-0 focus:outline-none focus:ring-0'
+              className='font-mono text-rt-gold underline underline-offset-2 hover:opacity-90 active:opacity-80 bg-transparent p-0 border-0 focus:outline-none focus:ring-0'
               aria-label='Share connect URL'
               title='Tap to share or copy'
             >
               {url}
             </button>
           ) : (
-            <span className='font-mono text-emerald-400'>unknown</span>
+            <span className='font-mono text-rt-gold'>unknown</span>
           )}
           {url && (
             <span className='relative inline-flex items-center' ref={qrAnchorRef}>

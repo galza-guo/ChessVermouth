@@ -1021,7 +1021,7 @@ function App() {
           <div className='relative flex items-center gap-3 text-xs text-zinc-400'>
             {saveIndicator}
             {!isHotSeatMode && gameId && status === 'ready' && (
-              <span>Session: <span className='font-mono text-emerald-400'>{gameId}</span></span>
+              <span>Session: <span className='font-mono text-rt-gold'>{gameId}</span></span>
             )}
             <button
               type='button'
@@ -1272,7 +1272,7 @@ function App() {
                   <div className='flex items-center gap-2'>
                     <button
                       type='button'
-                      className='px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-500'
+                      className='px-3 py-1.5 rounded-md bg-rt-gold text-rt-bg text-sm font-semibold hover:brightness-110'
                       onClick={() => handleHistoryContinue(g.id)}
                     >
                       Continue
@@ -1577,14 +1577,14 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
     <button
       type='button'
       onClick={onClick}
-      className={`group w-full rounded-lg border border-white/10 backdrop-blur px-3 py-2 text-sm text-white/90 transition-all ${active ? 'bg-white/10 shadow-[0_6px_16px_rgba(0,0,0,0.35)] ring-2 ring-emerald-400/40' : 'bg-white/5 shadow-inner'}`}
+      className={`group w-full rounded-lg border border-white/10 backdrop-blur px-3 py-2 text-sm text-white/90 transition-all ${active ? 'bg-white/10 shadow-[0_6px_16px_rgba(0,0,0,0.35)] ring-2 ring-rt-gold/40' : 'bg-white/5 shadow-inner'}`}
       aria-pressed={active}
     >
       <div className='flex flex-col items-start gap-1'>
-        <span className={`text-[10px] uppercase tracking-wide ${active ? 'text-emerald-300' : 'text-zinc-300'}`}>{label}</span>
+        <span className={`text-[10px] uppercase tracking-wide ${active ? 'text-rt-gold' : 'text-zinc-300'}`}>{label}</span>
         <div style={{ fontVariantNumeric: 'tabular-nums' }} className='font-semibold text-base'>
           {easterEgg ? (
-            <span className='text-emerald-300'>長考之王</span>
+            <span className='text-rt-gold'>長考之王</span>
           ) : (
             <span className='inline-grid' style={{ gridTemplateColumns: '2ch 1ch 2ch' }}>
               <span className='justify-self-end'>{minutes}</span>
@@ -2241,7 +2241,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
         if (existing) existing.remove()
         const toast = document.createElement('span')
         toast.setAttribute('data-temp-toast', '1')
-        toast.className = 'ml-2 text-xs text-emerald-300 transition-opacity duration-300'
+        toast.className = 'ml-2 text-xs text-rt-gold transition-opacity duration-300'
         toast.style.opacity = '1'
         toast.textContent = msg
         btn.insertAdjacentElement('afterend', toast)
@@ -2421,7 +2421,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
       </div>
       <div className='text-xs text-zinc-300 -mt-2 flex flex-col items-center text-center gap-1'>
         {networkName && (
-        <p>Network: <span className='font-mono text-emerald-400'>{networkName}</span></p>
+        <p>Network: <span className='font-mono text-rt-gold'>{networkName}</span></p>
         )}
         <p className='flex items-center justify-center gap-2'>
           <span>Connect:</span>
@@ -2429,14 +2429,14 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
             <button
               type='button'
               onClick={handleShareClick}
-              className='font-mono text-emerald-400 underline underline-offset-2 hover:opacity-90 active:opacity-80 bg-transparent p-0 border-0 focus:outline-none focus:ring-0'
+              className='font-mono text-rt-gold underline underline-offset-2 hover:opacity-90 active:opacity-80 bg-transparent p-0 border-0 focus:outline-none focus:ring-0'
               aria-label='Share connect URL'
               title='Tap to share or copy'
             >
               {url}
             </button>
           ) : (
-            <span className='font-mono text-emerald-400'>unknown</span>
+            <span className='font-mono text-rt-gold'>unknown</span>
           )}
           {url && (
             <span className='relative inline-flex items-center' ref={qrAnchorRef}>

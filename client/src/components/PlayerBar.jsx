@@ -31,11 +31,11 @@ export default function PlayerBar({
   const textColor = isWhite ? 'text-zinc-900' : 'text-white'
   const subTextColor = isWhite ? 'text-zinc-600' : 'text-zinc-400'
   
-  // Active glow effect
+  // Active glow effect - Refined Tactility Gold
   const activeRing = active
     ? isWhite
-      ? 'ring-2 ring-emerald-500/60 shadow-[0_0_20px_rgba(16,185,129,0.3)]'
-      : 'ring-2 ring-emerald-400/50 shadow-[0_0_20px_rgba(16,185,129,0.25)]'
+      ? 'ring-2 ring-rt-gold/60 shadow-[0_0_20px_rgba(201,162,39,0.3)]'
+      : 'ring-2 ring-rt-gold/50 shadow-[0_0_20px_rgba(201,162,39,0.25)]'
     : ''
 
   // Captured pieces display
@@ -106,8 +106,8 @@ export default function PlayerBar({
           font-mono font-bold text-lg
           ${active 
             ? isWhite 
-              ? 'bg-emerald-600 text-white' 
-              : 'bg-emerald-500 text-white'
+              ? 'bg-rt-gold text-rt-bg' 
+              : 'bg-rt-gold text-rt-bg'
             : isWhite
               ? 'bg-zinc-200/80 text-zinc-800'
               : 'bg-zinc-800/80 text-zinc-200'
