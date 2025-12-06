@@ -1,4 +1,5 @@
 import AnimatedPiece from './components/AnimatedPiece';
+import PlayerBar from './components/PlayerBar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import useSound from 'use-sound'
@@ -18,8 +19,7 @@ import IconEmojiOn from './assets/icons/Emoji-on.png'
 import IconUndo from './assets/icons/Undo.png'
 import IconAI from './assets/icons/AI.png'
 import IconAnalyseOn from './assets/icons/Analyse-on.png'
-import IconReset from './assets/icons/Reset.png'
-import IconLeave from './assets/icons/Leave.png'
+
 
 const icons = { bb, bk, bn, bp, bq, br, wb, wk, wn, wp, wq, wr }
 const sounds = { move, check, capture, castle, gameOver }
@@ -158,6 +158,24 @@ function App() {
       setEmojiBursts((prev) => prev.filter((e) => e.id !== id))
     }, 2500)
   }, [])
+
+  // Calculate captured pieces from history for PlayerBar display
+  const { whiteCaptured, blackCaptured } = useMemo(() => {
+    const white = [] // pieces captured BY white (black pieces taken)
+    const black = [] // pieces captured BY black (white pieces taken)
+    for (const move of history) {
+      if (move.captured) {
+        const capturedPiece = { type: move.captured, color: move.color === 'w' ? 'b' : 'w' }
+        if (move.color === 'w') {
+          white.push(capturedPiece)
+        } else {
+          black.push(capturedPiece)
+        }
+      }
+    }
+    return { whiteCaptured: white, blackCaptured: black }
+  }, [history])
+
 
   const saveIndicator = useMemo(() => {
     const title = saveStatus.timestamp
@@ -435,14 +453,7 @@ function App() {
     setAvailableMoves([])
   }, [history, soundboard])
 
-  // Keep control panel collapsed by default and whenever lobby overlay is shown
-  useEffect(() => {
-    if (isHotSeatMode) return
-    if (status === 'ready' || status === 'lobby' || status === 'fail') {
-      setIsPanelOpen(false)
-    }
-    // For other statuses (e.g., waiting), do not auto-open; respect user toggle
-  }, [status, isHotSeatMode])
+
 
   // Lock page scroll when lobby overlay is open (prevents iOS bounce showing content)
   useEffect(() => {
@@ -576,7 +587,9 @@ function App() {
       from: move.from,
       to: move.to,
       type: moveType,
-      san: move.san
+      san: move.san,
+      captured: move.captured || null,
+      color: move.color
     })))
     
     // Switch current player
@@ -599,7 +612,7 @@ function App() {
   }, [isHotSeatMode, hotSeatGameOver, clearHotSeatSnapshot])
 
   useEffect(() => {
-    if (!hotSeatGame) return
+    if (!isHotSeatMode || !hotSeatGame) return
     console.log('Hot seat mode: Initializing game...')
     try {
       console.log('Initial board:', hotSeatGame.board())
@@ -1028,6 +1041,27 @@ function App() {
                 >
                   History
                 </button>
+                <hr className='border-white/10 mx-2' />
+                <button
+                  type='button'
+                  className='w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10'
+                  onClick={() => {
+                    setIsContextMenuOpen(false)
+                    setResetConfirmOpen(true)
+                  }}
+                >
+                  Reset Game
+                </button>
+                <button
+                  type='button'
+                  className='w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-white/10'
+                  onClick={() => {
+                    setIsContextMenuOpen(false)
+                    setLeaveConfirmOpen(true)
+                  }}
+                >
+                  {isHotSeatMode ? 'New Game' : 'Leave Game'}
+                </button>
               </div>
             )}
           </div>
@@ -1036,16 +1070,63 @@ function App() {
 
       {/* Main Content */}
       <main className='mx-auto max-w-5xl w-full p-4 grid grid-cols-1 gap-4 items-start justify-items-center'>
-        <div className='flex flex-col items-center justify-center gap-2 w-full'>
-          {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : color, emojiBursts, animatedPiece })}
-          {animatedPiece && (
-            <AnimatedPiece
-              piece={animatedPiece.piece}
-              from={animatedPiece.from}
-              to={animatedPiece.to}
-              icons={icons}
-            />
-          )}
+        <div className='flex flex-col items-center justify-center gap-2 w-full' style={{ maxWidth: 'min(92vw, 500px)' }}>
+          {/* Top PlayerBar (Opponent) */}
+          {(() => {
+            // Determine which color is on top (opponent) and bottom (player)
+            const playerColor = isHotSeatMode ? (hotSeatCurrentPlayer === 'w' ? 'white' : 'black') : (color || 'white')
+            const opponentColor = playerColor === 'white' ? 'black' : 'white'
+            const topMs = opponentColor === 'white' ? clockLatest.whiteMs : clockLatest.blackMs
+            const bottomMs = playerColor === 'white' ? clockLatest.whiteMs : clockLatest.blackMs
+            const topParts = { m: Math.floor(Math.max(0, topMs || 0) / 60000), s: Math.floor((Math.max(0, topMs || 0) % 60000) / 1000) }
+            const bottomParts = { m: Math.floor(Math.max(0, bottomMs || 0) / 60000), s: Math.floor((Math.max(0, bottomMs || 0) % 60000) / 1000) }
+            const activeTurnColor = (isHotSeatMode ? hotSeatCurrentPlayer : turn) === 'w' ? 'white' : 'black'
+            const isPlaying = status === 'ready' && !(isGameOver && isGameOver[0])
+            const topActive = isPlaying && activeTurnColor === opponentColor
+            const bottomActive = isPlaying && activeTurnColor === playerColor
+            // Captured pieces: show what the player captured (opponent's pieces)
+            // Captured pieces: show what THAT player captured
+            // whiteCaptured = pieces captured BY white (black pieces taken)
+            // blackCaptured = pieces captured BY black (white pieces taken)
+            // Top bar (opponent): show what opponent captured
+            // Bottom bar (player): show what player captured
+            const topCaptured = opponentColor === 'white' ? whiteCaptured : blackCaptured
+            const bottomCaptured = playerColor === 'white' ? whiteCaptured : blackCaptured
+
+            return (
+              <>
+                <PlayerBar
+                  name={opponentName || (isHotSeatMode ? (opponentColor === 'white' ? 'White' : 'Black') : 'Opponent')}
+                  side={opponentColor}
+                  minutes={topParts.m}
+                  seconds={topParts.s}
+                  active={topActive}
+                  capturedPieces={topCaptured}
+                  icons={icons}
+                  isTop={true}
+                />
+                {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: playerColor, emojiBursts, animatedPiece })}
+                {animatedPiece && (
+                  <AnimatedPiece
+                    piece={animatedPiece.piece}
+                    from={animatedPiece.from}
+                    to={animatedPiece.to}
+                    icons={icons}
+                  />
+                )}
+                <PlayerBar
+                  name={playerName || (isHotSeatMode ? (playerColor === 'white' ? 'White' : 'Black') : 'You')}
+                  side={playerColor}
+                  minutes={bottomParts.m}
+                  seconds={bottomParts.s}
+                  active={bottomActive}
+                  capturedPieces={bottomCaptured}
+                  icons={icons}
+                  isTop={false}
+                />
+              </>
+            )
+          })()}
           <div className='w-full flex justify-start px-1'>
             {saveIndicator}
           </div>
@@ -1704,9 +1785,9 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
 
   return (
     <div className='glass-panel w-full p-4 flex flex-col gap-4'>
-      <div className='flex flex-row flex-nowrap gap-4 items-start w-full overflow-hidden'>
+      <div className='flex flex-row flex-nowrap gap-4 items-start w-full'>
         {/* Left: vertical icon-only actions */}
-        <div className='flex flex-col items-start gap-2 shrink-0'>
+        <div className='flex flex-col items-start gap-2 shrink-0 p-2 -m-2'>
           {/* Emoji (ViewWindow toggle) */}
           <div className='relative group'>
             <button
@@ -1768,39 +1849,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             >Undo</span>
           </div>
 
-          {/* Reset */}
-          <div className='relative group'>
-            <button
-              type='button'
-              aria-label='Reset Game'
-              className='neo-btn neo-btn-danger'
-              onClick={handleReset}
-            >
-              <img src={IconReset} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain' />
-            </button>
-            <span
-              role='tooltip'
-              aria-hidden='true'
-              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
-            >Reset</span>
-          </div>
 
-          {/* Leave/New Game */}
-          <div className='relative group'>
-            <button
-              type='button'
-              aria-label={isHotSeatMode ? 'New Game' : 'Leave Game'}
-              className='neo-btn neo-btn-danger'
-              onClick={handleLeave}
-            >
-              <img src={IconLeave} alt='' aria-hidden='true' className='h-5 w-auto brightness-0 invert object-contain ml-1.5' />
-            </button>
-            <span
-              role='tooltip'
-              aria-hidden='true'
-              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
-            >{isHotSeatMode ? 'New Game' : 'Leave'}</span>
-          </div>
 
           {/* Reserve space for ~3 future buttons */}
           <div className='h-16 md:h-24' aria-hidden='true'></div>
@@ -1910,11 +1959,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
         {/* Analysis panel removed; AnalysisView now lives inside the ViewWindow above */}
         </div>
 
-        {/* Right: clocks (top = opponent, bottom = you) */}
-        <div className='flex flex-col gap-3 shrink-0'>
-          {renderTimer(topColor)}
-          {renderTimer(bottomColor)}
-        </div>
+
       </div>
     </div>
   )
