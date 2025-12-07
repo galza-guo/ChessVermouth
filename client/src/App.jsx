@@ -111,6 +111,7 @@ function App() {
   const [history, setHistory] = useState([])
   const [color, setColor] = useState('')
   const [gameId, setGameId] = useState('')
+  const [pieceAnimNonce, setPieceAnimNonce] = useState(0) // increment to trigger piece hop-on animation
   const [status, setStatus] = useState(isHotSeatMode ? 'ready' : 'lobby')
   const [promotionRequired, setPromotionRequired] = useState(false)
   const [promotionData, setPromotionData] = useState(null)
@@ -142,6 +143,14 @@ function App() {
   const [animatedPiece, setAnimatedPiece] = useState(null);
   useEffect(() => { clockLatestRef.current = clockLatest }, [clockLatest])
   useEffect(() => { playerNameRef.current = playerName }, [playerName])
+  // Trigger piece hop-on animation on initial mount for HotSeat mode
+  useEffect(() => {
+    if (isHotSeatMode) {
+      // Small delay to let board render first
+      const timer = setTimeout(() => setPieceAnimNonce((n) => n + 1), 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isHotSeatMode])
   useEffect(() => { gameIdRef.current = gameId }, [gameId])
   // Emoji overlay bursts on/near the board
   const [emojiBursts, setEmojiBursts] = useState([])
@@ -750,7 +759,13 @@ function App() {
 
       newSocket.on('position', handlePosition)
       newSocket.on('color', setColor)
-      newSocket.on('status', setStatus)
+      newSocket.on('status', (newStatus) => {
+        setStatus(newStatus)
+        // Trigger piece hop-on animation when game starts or resumes
+        if (newStatus === 'ready') {
+          setPieceAnimNonce((n) => n + 1)
+        }
+      })
       newSocket.on('terminate', handleTerminate)
       newSocket.on('gameId', (gid) => {
         setGameId(gid)
@@ -1063,7 +1078,7 @@ function App() {
                   icons={icons}
                   isTop={true}
                 />
-                {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: playerColor, emojiBursts, animatedPiece, bestMoveArrow })}
+                {chessBoard({ board: board, handleSquareClick: handleSquareClick, handleDragStart: handleDragStart, handleDrop: handleDrop, availableMoves: availableMoves, history: history, isCheck: isCheck, isGameOver: isGameOver, turn: turn, selectedSquare: selectedSquare, color: playerColor, emojiBursts, animatedPiece, bestMoveArrow, pieceAnimNonce })}
                 {animatedPiece && (
                   <AnimatedPiece
                     piece={animatedPiece.piece}
@@ -1261,7 +1276,7 @@ function App() {
   )
 }
 
-function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts, animatedPiece, bestMoveArrow}) {
+function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts, animatedPiece, bestMoveArrow, pieceAnimNonce}) {
   const numToLetter = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
   
   // Refined Tactility Colors - Slate/Stone inspired
@@ -1413,13 +1428,22 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
             </div>
           )}
 
-          {/* Piece Image - 2.5D lift with drop-shadow */}
+          {/* Piece Image - 2.5D lift with drop-shadow, hop-on animation */}
           {square != null && (
             <img
+              key={`${coord}-${pieceAnimNonce}`}
               src={icons[`${square.color}${square.type}`]}
               data-square={coord}
-              className='relative m-auto z-20 h-[85%] w-[85%] transition-transform hover:scale-105 active:scale-95'
-              style={{ filter: 'drop-shadow(0 4px 3px rgba(0,0,0,0.3))' }}
+              className={`relative m-auto z-20 h-[85%] w-[85%] transition-transform hover:scale-105 active:scale-95 ${pieceAnimNonce > 0 ? 'animate-piece-hop' : ''}`}
+              style={{ 
+                filter: 'drop-shadow(0 4px 3px rgba(0,0,0,0.3))',
+                // Animate from both ends: top rows L→R down, bottom rows R→L up (point symmetric 中心对称)
+                animationDelay: pieceAnimNonce > 0 
+                  ? `${(boardInd < 4 ? (boardInd * 8 + rowInd) : ((7 - boardInd) * 8 + (7 - rowInd))) * 40}ms` 
+                  : '0ms',
+                opacity: pieceAnimNonce > 0 ? 0 : 1,
+                animationFillMode: 'forwards',
+              }}
               onDragStart={handleDragStart}
               draggable="true"
               alt={`${square.color}${square.type}`}
