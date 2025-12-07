@@ -14,7 +14,6 @@ import ConfirmDialog from './components/ConfirmDialog'
 import GVImage from './assets/images/G&V.webp'
 import BoyImage from './assets/images/boy.webp'
 import GirlImage from './assets/images/girl.webp'
-import SaveIcon from './assets/images/save-icon.png'
 import IconEmoji from './assets/icons/Emoji.png'
 import IconEmojiOn from './assets/icons/Emoji-on.png'
 import IconUndo from './assets/icons/Undo.png'
@@ -146,11 +145,21 @@ function App() {
   // Trigger piece hop-on animation on initial mount for HotSeat mode
   useEffect(() => {
     if (isHotSeatMode) {
-      // Small delay to let board render first
-      const timer = setTimeout(() => setPieceAnimNonce((n) => n + 1), 100)
-      return () => clearTimeout(timer)
+      // Small delay to let board render first. 
+      // check if we have a resumed game pending; if so, DON'T trigger animation yet (wait for dialog)
+      const hasSaved = tryGetHotSeatSnapshot()
+      if (!hasSaved) {
+        const timer = setTimeout(() => setPieceAnimNonce((n) => n + 1), 100)
+        return () => clearTimeout(timer)
+      }
     }
   }, [isHotSeatMode])
+
+  const tryGetHotSeatSnapshot = () => {
+    try { 
+      return !!localStorage.getItem('cv:hotseat-resume') 
+    } catch { return false }
+  }
   useEffect(() => { gameIdRef.current = gameId }, [gameId])
   // Emoji overlay bursts on/near the board
   const [emojiBursts, setEmojiBursts] = useState([])
@@ -196,25 +205,15 @@ function App() {
       : 'No saved state yet'
     if (saveStatus.state === 'saving') {
       return (
-        <span className='inline-flex items-center' title={title}>
-          <img 
-            src={SaveIcon} 
-            alt='Saving' 
-            className='h-4 w-4 animate-pulse opacity-80'
-            style={{ filter: 'invert(67%) sepia(74%) saturate(500%) hue-rotate(7deg) brightness(98%) contrast(98%)' }}
-          />
+        <span className='badge badge-warn animate-pulse w-16 justify-center' title={title}>
+          Saving
         </span>
       )
     }
     if (saveStatus.state === 'idle' && !saveStatus.timestamp) return null
     return (
-      <span className='inline-flex items-center' title={title}>
-        <img 
-          src={SaveIcon} 
-          alt='Saved' 
-          className='h-4 w-4 opacity-80'
-          style={{ filter: 'invert(61%) sepia(50%) saturate(500%) hue-rotate(100deg) brightness(92%) contrast(86%)' }}
-        />
+      <span className='badge w-16 justify-center border-emerald-500/30 bg-emerald-500/10 text-emerald-400' title={title}>
+        Saved
       </span>
     )
   }, [saveStatus])
@@ -761,7 +760,7 @@ function App() {
       newSocket.on('color', setColor)
       newSocket.on('status', (newStatus) => {
         setStatus(newStatus)
-        // Trigger piece hop-on animation when game starts or resumes
+        // Trigger piece/tile animation when game starts or resumes (Online)
         if (newStatus === 'ready') {
           setPieceAnimNonce((n) => n + 1)
         }
@@ -896,6 +895,8 @@ function App() {
     setSaveStatus({ state: 'saving', timestamp: Date.now() })
     updateHotSeatPosition(resumedGame)
     setResumeModal({ open: false, game: null })
+    // Trigger animation
+    setTimeout(() => setPieceAnimNonce((n) => n + 1), 100)
   }, [hydrateHotSeatGameFromSnapshot, readHotSeatSnapshot, updateHotSeatPosition])
 
   const handleHotSeatDiscard = useCallback(() => {
@@ -906,6 +907,8 @@ function App() {
       updateHotSeatPosition()
     }
     setResumeModal({ open: false, game: null })
+    // Trigger animation
+    setTimeout(() => setPieceAnimNonce((n) => n + 1), 100)
   }, [clearHotSeatSnapshot, hotSeatGame, updateHotSeatPosition])
 
   const handleHotSeatStartNew = useCallback(() => {
@@ -916,6 +919,8 @@ function App() {
       updateHotSeatPosition()
     }
     setResumeModal({ open: false, game: null })
+    // Trigger animation
+    setTimeout(() => setPieceAnimNonce((n) => n + 1), 100)
   }, [clearHotSeatSnapshot, hotSeatGame, updateHotSeatPosition])
 
   const handleResumeDialogResume = useCallback(() => {
@@ -1028,12 +1033,12 @@ function App() {
         <div className='mx-auto h-14 flex items-center justify-between' style={{ maxWidth: 'min(92vw, 500px)' }}>
           <div className='flex items-center gap-2'>
             <img src="/logo-text.png" alt="ChessVermouth" className='h-12' />
-            <span className='badge'>{isHotSeatMode ? 'Hot Seat' : 'Online'}</span>
-            {isDevMode && <span className='badge badge-dev'>Dev</span>}
-            {status === 'waiting' && <span className='badge-warn'>Waiting</span>}
           </div>
           <div className='relative flex items-center gap-3 text-xs text-zinc-400'>
+            {status === 'waiting' && <span className='badge-warn'>Waiting</span>}
             {saveIndicator}
+            {isDevMode && <span className='badge badge-dev'>Dev</span>}
+            <span className='badge'>{isHotSeatMode ? 'Hot Seat' : 'Online'}</span>
             {!isHotSeatMode && gameId && status === 'ready' && (
               <span>Session: <span className='font-mono text-rt-gold'>{gameId}</span></span>
             )}
@@ -1393,13 +1398,24 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
         color: isDarkSquare ? 'rgba(232, 228, 220, 0.5)' : 'rgba(90, 104, 114, 0.5)',
       }
 
+      // Calculate tile animation delay (ripple from center)
+      // Center is (3.5, 3.5). Distance formula: sqrt((r-3.5)^2 + (c-3.5)^2)
+      // boardInd = column, rowInd = row
+      const distFromCenter = Math.sqrt(Math.pow(rowInd - 3.5, 2) + Math.pow(boardInd - 3.5, 2))
+      const tileDelay = pieceAnimNonce > 0 ? distFromCenter * 60 : 0
+
       boardArr.push(
         <div
-          key={coord}
+          key={`${coord}-${pieceAnimNonce}`}
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
-          className='relative square flex flex-col overflow-hidden'
-          style={squareStyle}
+          className={`relative square flex flex-col overflow-hidden ${pieceAnimNonce > 0 ? 'animate-tile-ripple' : ''}`}
+          style={{
+            ...squareStyle,
+            // opacity handed by animation (visible by default)
+            animationDelay: `${tileDelay}ms`,
+            animationFillMode: 'forwards',
+          }}
           data-square={coord}
           onClick={handleSquareClick}
         >
@@ -1434,12 +1450,12 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
               key={`${coord}-${pieceAnimNonce}`}
               src={icons[`${square.color}${square.type}`]}
               data-square={coord}
-              className={`relative m-auto z-20 h-[85%] w-[85%] transition-transform hover:scale-105 active:scale-95 ${pieceAnimNonce > 0 ? 'animate-piece-hop' : ''}`}
+              className={`relative m-auto z-20 h-[85%] w-[85%] transition-transform hover:scale-105 active:scale-95 ${pieceAnimNonce > 0 ? 'animate-tile-ripple' : ''}`}
               style={{ 
                 filter: 'drop-shadow(0 4px 3px rgba(0,0,0,0.3))',
-                // Animate from both ends: top rows L→R down, bottom rows R→L up (point symmetric 中心对称)
+                // Ripple from center delay (synchronized with tiles)
                 animationDelay: pieceAnimNonce > 0 
-                  ? `${(boardInd < 4 ? (boardInd * 8 + rowInd) : ((7 - boardInd) * 8 + (7 - rowInd))) * 40}ms` 
+                  ? `${Math.sqrt(Math.pow(rowInd - 3.5, 2) + Math.pow(boardInd - 3.5, 2)) * 60}ms` 
                   : '0ms',
                 opacity: pieceAnimNonce > 0 ? 0 : 1,
                 animationFillMode: 'forwards',

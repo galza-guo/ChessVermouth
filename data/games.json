@@ -79,7 +79,7 @@
     "2025.11.21(25)": {
       "id": "2025.11.21(25)",
       "createdAt": "2025-11-21T11:19:37.540Z",
-      "updatedAt": "2025-11-21T11:19:51.993Z",
+      "updatedAt": "2025-12-07T00:38:37.907Z",
       "status": "active",
       "variant": "standard",
       "players": {
@@ -90,45 +90,45 @@
       "fen": "rnbqkbnr/2pp1ppp/8/pp2p3/3P2PP/8/PPP1PP2/RNBQKBNR w KQkq - 0 4",
       "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"]1. d4 e5 2. h4 a5 3. g4 b5 *",
       "clocks": {
-        "whiteMs": 3549,
-        "blackMs": 10702
+        "whiteMs": 10001,
+        "blackMs": 0
       },
       "moves": [
         {
           "ply": 1,
           "uci": "d2d4",
           "san": "d4",
-          "ts": "2025-11-21T11:19:51.993Z"
+          "ts": "2025-12-07T00:38:37.907Z"
         },
         {
           "ply": 2,
           "uci": "e7e5",
           "san": "e5",
-          "ts": "2025-11-21T11:19:51.993Z"
+          "ts": "2025-12-07T00:38:37.907Z"
         },
         {
           "ply": 3,
           "uci": "h2h4",
           "san": "h4",
-          "ts": "2025-11-21T11:19:51.993Z"
+          "ts": "2025-12-07T00:38:37.907Z"
         },
         {
           "ply": 4,
           "uci": "a7a5",
           "san": "a5",
-          "ts": "2025-11-21T11:19:51.993Z"
+          "ts": "2025-12-07T00:38:37.907Z"
         },
         {
           "ply": 5,
           "uci": "g2g4",
           "san": "g4",
-          "ts": "2025-11-21T11:19:51.993Z"
+          "ts": "2025-12-07T00:38:37.907Z"
         },
         {
           "ply": 6,
           "uci": "b7b5",
           "san": "b5",
-          "ts": "2025-11-21T11:19:51.993Z"
+          "ts": "2025-12-07T00:38:37.907Z"
         }
       ]
     },
@@ -335,12 +335,39 @@
           "ts": "2025-12-06T12:09:00.600Z"
         }
       ]
+    },
+    "2025.12.07(01)": {
+      "id": "2025.12.07(01)",
+      "createdAt": "2025-12-07T00:38:37.905Z",
+      "updatedAt": "2025-12-07T00:56:25.606Z",
+      "status": "active",
+      "variant": "standard",
+      "players": {
+        "hostName": null,
+        "opponentName": null
+      },
+      "startFEN": "startpos",
+      "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"]1. e4 *",
+      "clocks": {
+        "whiteMs": 2496,
+        "blackMs": 5
+      },
+      "moves": [
+        {
+          "ply": 1,
+          "uci": "e2e4",
+          "san": "e4",
+          "ts": "2025-12-07T00:56:25.606Z"
+        }
+      ]
     }
   },
   "counters": {
     "2025.10.10": 1,
     "2025.11.20": 2,
     "2025.11.21": 34,
-    "2025.12.06": 3
+    "2025.12.06": 3,
+    "2025.12.07": 1
   }
 }
