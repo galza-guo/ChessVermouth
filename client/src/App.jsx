@@ -1412,7 +1412,7 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
           className={`relative square flex flex-col overflow-hidden ${pieceAnimNonce > 0 ? 'animate-tile-ripple' : ''}`}
           style={{
             ...squareStyle,
-            // opacity handed by animation (visible by default)
+            opacity: 0, // Start invisible, animation sets opacity: 1
             animationDelay: `${tileDelay}ms`,
             animationFillMode: 'forwards',
           }}
@@ -1457,7 +1457,7 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
                 animationDelay: pieceAnimNonce > 0 
                   ? `${Math.sqrt(Math.pow(rowInd - 3.5, 2) + Math.pow(boardInd - 3.5, 2)) * 60}ms` 
                   : '0ms',
-                opacity: pieceAnimNonce > 0 ? 0 : 1,
+                opacity: 0, // Start invisible, animation sets opacity: 1
                 animationFillMode: 'forwards',
               }}
               onDragStart={handleDragStart}
@@ -2203,17 +2203,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
                     </tbody>
                   </table>
                 )}
-                {/* Expandable button (placeholder) */}
-                <button
-                  type='button'
-                  aria-label='Expand move list'
-                  onClick={() => console.log('Expand move list clicked')}
-                  className='absolute bottom-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-md bg-zinc-900/80 border border-white/10 text-white/90 shadow-md backdrop-blur hover:bg-zinc-800/80 active:scale-[0.98]'
-                >
-                  <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
-                    <path d='M12 8l-4 4 4 4' />
-                  </svg>
-                </button>
+                {/* Expandable button (placeholder) removed */}
               </>
             )}
 

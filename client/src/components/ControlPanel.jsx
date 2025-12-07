@@ -423,17 +423,7 @@ export default function ControlPanel({ history, tableEnd, socket, status, gameId
                     </tbody>
                   </table>
                 )}
-                {/* Expandable button (placeholder) */}
-                <button
-                  type='button'
-                  aria-label='Expand move list'
-                  onClick={() => console.log('Expand move list clicked')}
-                  className='absolute bottom-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-md bg-zinc-900/80 border border-white/10 text-white/90 shadow-md backdrop-blur hover:bg-zinc-800/80 active:scale-[0.98]'
-                >
-                  <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
-                    <path d='M12 8l-4 4 4 4' />
-                  </svg>
-                </button>
+                {/* Expandable button (placeholder) removed */}
               </>
             )}
 
