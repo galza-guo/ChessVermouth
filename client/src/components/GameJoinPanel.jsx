@@ -5,9 +5,6 @@ import GVImage from '../assets/images/G&V.webp'
 import BoyImage from '../assets/images/boy.webp'
 import GirlImage from '../assets/images/girl.webp'
 
-// We need to import config or pass props for environment variables if needed
-// For now assuming passed as props or using import.meta.env directly
-
 export default function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, clientPort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, setPlayerName }) {
   const ip = (serverInfo && serverInfo.lanIp) ? serverInfo.lanIp : serverIp
   const protocol = (typeof window !== 'undefined' && window.location && window.location.protocol) || 'http:'
@@ -26,15 +23,10 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
   const [baseLoaded, setBaseLoaded] = useState(false)
   const [boyLoaded, setBoyLoaded] = useState(false)
   const [girlLoaded, setGirlLoaded] = useState(false)
-  const [hovered, setHovered] = useState(null) // 'Gallant' | 'Vermouth' | null
+  const [hovered, setHovered] = useState(null)
   const [pressed, setPressed] = useState(null)
-  
-  // Debug mount
-  useEffect(() => {
-    console.log('[GameJoinPanel] MOUNTED. isHome?', isHome, 'Socket?', !!socket)
-  }, [])
 
-  // Listen for name claim updates from server to disable taken quick-join buttons
+  // Listen for name claim updates
   useEffect(() => {
     if (!socket) return
     const onClaims = (payload) => {
@@ -51,16 +43,10 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
   }, [socket])
 
   const quickJoin = (name) => {
-    console.log('[GameJoinPanel] quickJoin called for:', name, 'Socket present?', !!socket)
-    if (!socket) {
-       console.error('[GameJoinPanel] Socket not available for join')
-       return
-    }
+    if (!socket) return
     try {
       if (setPlayerName) setPlayerName(name)
-      // Optimistically mark as claimed locally
       setClaimed((prev) => ({ ...prev, [name]: true }))
-      // Wait for server to assign a game and then claim the name server-side
       const onceGameId = (gid) => {
         try { socket.emit('claimName', name) } catch (_) {}
         socket.off('gameId', onceGameId)
@@ -150,16 +136,12 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
     if (!url) return
     if (!isQrOpen) {
       try {
-        // Compute portal position relative to viewport (fixed)
         if (qrAnchorRef.current) {
           const r = qrAnchorRef.current.getBoundingClientRect()
-          const popupW = 200 // approx container width
-          const popupH = 200 // approx container height
-          // Place so the QR's bottom-left corner overlaps near the icon,
-          // then shift left by one icon width to better cover the icon
+          const popupW = 200
+          const popupH = 200
           let left = r.left + (r.width / 2) - r.width + 8
           let top = r.top + (r.height / 2) - popupH + 8
-          // Clamp to viewport
           if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8
           if (left < 8) left = 8
           if (top + popupH > window.innerHeight - 8) top = window.innerHeight - popupH - 8
@@ -171,7 +153,6 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
         if (!qrDataUrl) {
           let dataUrl = null
           try {
-            // Generate QR with transparent background and white modules
             dataUrl = await QRCode.toDataURL(url, {
               errorCorrectionLevel: 'M',
               margin: 1,
@@ -179,7 +160,6 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
               color: { dark: '#FFFFFF', light: '#0000' }
             })
           } catch (_) {
-            // Fallback: white modules on black background (non-transparent)
             dataUrl = await QRCode.toDataURL(url, {
               errorCorrectionLevel: 'M',
               margin: 1,
@@ -190,7 +170,6 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
           setQrDataUrl(dataUrl)
         }
       } catch (_) {
-        // leave silently
       } finally {
         setQrLoading(false)
       }
@@ -199,7 +178,7 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
     }
   }
 
-  // Redraw hit-test canvases to match displayed size
+  // Redraw hit-test canvases
   useEffect(() => {
     const redraw = () => {
       try {
@@ -219,7 +198,6 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
         if (!bctx || !gctx) return
         bctx.clearRect(0, 0, w, h)
         gctx.clearRect(0, 0, w, h)
-        // Draw overlays scaled to fit exactly the displayed area
         bctx.drawImage(boyOverlayRef.current, 0, 0, w, h)
         gctx.drawImage(girlOverlayRef.current, 0, 0, w, h)
       } catch (_) {}
@@ -233,14 +211,10 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
 
   const hitTest = useCallback((clientX, clientY) => {
     try {
-      if (!baseImgRef.current || !boyCanvasRef.current || !girlCanvasRef.current) {
-        console.warn('[GameJoinPanel] Refs missing for hitTest')
-        return null
-      }
+      if (!baseImgRef.current || !boyCanvasRef.current || !girlCanvasRef.current) return null
       const rect = baseImgRef.current.getBoundingClientRect()
       const x = Math.floor(clientX - rect.left)
       const y = Math.floor(clientY - rect.top)
-      // console.log('[GameJoinPanel] HitTest coords:', x, y, 'Rect:', rect.width, rect.height)
       if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) return null
       const bctx = boyCanvasRef.current.getContext('2d', { willReadFrequently: true })
       const gctx = girlCanvasRef.current.getContext('2d', { willReadFrequently: true })
@@ -250,8 +224,7 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
       const g = gctx.getImageData(x, y, 1, 1).data[3]
       if (g > 8) return 'Vermouth'
       return null
-    } catch (e) {
-      console.error('[GameJoinPanel] HitTest error', e)
+    } catch (_) {
       return null
     }
   }, [])
@@ -274,7 +247,6 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
   const onPointerUp = (e) => {
     if (!isHome) return
     const side = hitTest(e.clientX, e.clientY)
-    console.log('[GameJoinPanel] PointerUp side:', side, 'Pressed:', pressed)
     const isDisabled = side === 'Gallant' ? !!claimed.Gallant : side === 'Vermouth' ? !!claimed.Vermouth : false
     if (side && pressed === side && !isDisabled) {
       quickJoin(side)
@@ -315,7 +287,6 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
                 className='inline-flex items-center justify-center ml-1 h-[1.1em] w-[1.1em] p-0 bg-transparent border-0 text-white/90 hover:opacity-90 active:opacity-80'
                 title={isQrOpen ? 'Hide QR code' : 'Show QR code'}
               >
-                {/* Tiny QR icon */}
                 <svg viewBox='0 0 24 24' width='1em' height='1em' fill='currentColor' aria-hidden='true'>
                   <rect x='3' y='3' width='7' height='7' rx='1'></rect>
                   <rect x='14' y='3' width='7' height='7' rx='1'></rect>
@@ -355,33 +326,20 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
             className='relative w-full overflow-hidden rounded-lg border border-white/10 bg-white/5 shadow-inner'
             onPointerMove={onPointerMove}
             onPointerLeave={onPointerLeave}
-            onPointerDown={(e) => {
-              console.log('[GameJoinPanel] Container PointerDown')
-              onPointerDown(e)
-            }}
-            onPointerUp={(e) => {
-              console.log('[GameJoinPanel] Container PointerUp')
-              onPointerUp(e)
-            }}
-            onClick={() => console.log('[GameJoinPanel] Container Click')}
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
             style={{
               cursor: hovered ? ((hovered === 'Gallant' && claimed.Gallant) || (hovered === 'Vermouth' && claimed.Vermouth) ? 'not-allowed' : 'pointer') : 'default'
             }}
           >
-            {/* Base composite image */}
             <img
               ref={baseImgRef}
               src={GVImage}
               alt='Choose player'
               className='block w-full h-auto select-none'
-              onLoad={() => {
-                console.log('[GameJoinPanel] Base image loaded')
-                setBaseLoaded(true)
-              }}
-              onError={(e) => console.error('[GameJoinPanel] Base image failed', e)}
+              onLoad={() => setBaseLoaded(true)}
               draggable='false'
             />
-            {/* Overlays for hover/active/disabled visuals */}
             <img
               ref={boyOverlayRef}
               src={BoyImage}
@@ -392,11 +350,7 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
                   ? 'grayscale(1)'
                   : (hovered === 'Gallant' ? 'drop-shadow(0 0 12px rgba(0,200,255,0.6)) drop-shadow(0 0 24px rgba(0,200,255,0.35))' : 'none')
               }}
-              onLoad={() => {
-                console.log('[GameJoinPanel] Boy overlay loaded')
-                setBoyLoaded(true)
-              }}
-              onError={(e) => console.error('[GameJoinPanel] Boy overlay failed', e)}
+              onLoad={() => setBoyLoaded(true)}
               draggable='false'
             />
             <img
@@ -409,15 +363,11 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
                   ? 'grayscale(1)'
                   : (hovered === 'Vermouth' ? 'drop-shadow(0 0 12px rgba(255,80,160,0.65)) drop-shadow(0 0 24px rgba(255,80,160,0.4))' : 'none')
               }}
-              onLoad={() => {
-                console.log('[GameJoinPanel] Girl overlay loaded')
-                setGirlLoaded(true)
-              }}
-              onError={(e) => console.error('[GameJoinPanel] Girl overlay failed', e)}
+              onLoad={() => setGirlLoaded(true)}
               draggable='false'
             />
 
-            {/* Hidden accessible buttons for keyboard users */}
+            {/* Hidden accessible buttons */}
             <button
               type='button'
               className='sr-only'

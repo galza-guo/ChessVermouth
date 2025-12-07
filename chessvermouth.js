@@ -866,9 +866,14 @@ async function ensureStockfish() {
 
 async function startEngine(optional = true) {
   try {
-    // Build latest engine server and ensure Stockfish is present
-    log('🔧 Building engine server (latest)...', 'blue');
-    execSync('npm run build', { stdio: 'inherit', cwd: __dirname });
+    // Check if engine build is already present (skip rebuild if dist/server.js exists)
+    const distPath = path.join(__dirname, 'dist', 'server.js');
+    if (fs.existsSync(distPath)) {
+      log('✅ Engine build already exists, skipping rebuild', 'green');
+    } else {
+      log('🔧 Building engine server...', 'blue');
+      execSync('npm run build', { stdio: 'inherit', cwd: __dirname });
+    }
     await ensureStockfish();
 
     // Pick an available engine port and start engine HTTP+WS server

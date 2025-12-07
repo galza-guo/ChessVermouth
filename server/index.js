@@ -404,6 +404,9 @@ io.on('connection', (socket) => {
   socket.on('move', (data) => {
     let gameId = data.gameId
     let move = data.move
+    if (!games[gameId]) {
+      return socket.emit('error', { message: 'Game not found' })
+    }
     if(games[gameId].status === 'ready') {
       try {
         // Attempt the move
@@ -468,6 +471,9 @@ io.on('connection', (socket) => {
   })
 
   socket.on('reset', (gameId) => {
+    if (!games[gameId]) {
+      return socket.emit('error', { message: 'Game not found' })
+    }
     if(games[gameId].status === 'ready') {
       games[gameId].game.reset()
       // Reset DB snapshot to start
@@ -483,6 +489,9 @@ io.on('connection', (socket) => {
   })
 
   socket.on('undo', (gameId) => {
+    if (!games[gameId]) {
+      return socket.emit('error', { message: 'Game not found' })
+    }
     if(games[gameId].status === 'ready') {
       games[gameId].game.undo()
       try {
@@ -498,7 +507,9 @@ io.on('connection', (socket) => {
   socket.on('promote', (data) => {
     let gameId = data.gameId
     let piece = data.piece // 'q', 'r', 'b', or 'n'
-    
+    if (!games[gameId]) {
+      return socket.emit('error', { message: 'Game not found' })
+    }
     if(games[gameId].status === 'ready' && games[gameId].pendingPromotion) {
       try {
         const pending = games[gameId].pendingPromotion
@@ -533,6 +544,9 @@ io.on('connection', (socket) => {
   })
 
   socket.on('leave', (gameId) => {
+    if (!games[gameId]) {
+      return socket.emit('error', { message: 'Game not found' })
+    }
     //check if socket is host
     if(games[gameId].players.host === socket.id) {
       io.in(gameId).fetchSockets().then((sockets) => {
@@ -651,6 +665,11 @@ io.on('connection', (socket) => {
     //if socket is in a session
     if(gameId !== '' && gameId) {
       console.log('gg', gameId)
+      // Guard: game may have been deleted already
+      if (!games[gameId]) {
+        delete sessions[socket.id]
+        return
+      }
       //if socket is a host
       if(games[gameId].players.host === socket.id) {
         //leave session and terminate the game

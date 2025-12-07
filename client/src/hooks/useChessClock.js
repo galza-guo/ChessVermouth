@@ -1,10 +1,16 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 
-// Chess clock hook (count-up, switch on turn change)
+/**
+ * useChessClock - Tracks elapsed time for both players
+ * @param {boolean} isPlaying - Game running (status ready, not game over)
+ * @param {string} activeTurn - 'w' | 'b' | '' — whose turn from game state
+ * @param {string|number} resetKey - Changes when a new game starts
+ * @returns {{ whiteMs: number, blackMs: number, clickSwitchTo: function }}
+ */
 export function useChessClock({
-  isPlaying,           // boolean: game running (status ready, not game over)
-  activeTurn,          // 'w' | 'b' | '' — whose turn from game state
-  resetKey,            // string/number changes when a new game starts
+  isPlaying,
+  activeTurn,
+  resetKey,
 }) {
   const [whiteMsBase, setWhiteMsBase] = useState(0)
   const [blackMsBase, setBlackMsBase] = useState(0)
@@ -50,7 +56,7 @@ export function useChessClock({
     }
   }, [isPlaying, activeTurn])
 
-  // Tick at ~4Hz for smooth-enough updates without cost, derive display from base + delta
+  // Tick at ~4Hz for smooth-enough updates without cost
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 250)
     return () => clearInterval(id)
@@ -62,6 +68,7 @@ export function useChessClock({
     }
     return whiteMsBase
   }, [whiteMsBase, now])
+
   const blackMs = useMemo(() => {
     if (runningRef.current === 'b' && lastStartRef.current != null) {
       return blackMsBase + (now - lastStartRef.current)
@@ -86,3 +93,5 @@ export function useChessClock({
 
   return { whiteMs, blackMs, clickSwitchTo }
 }
+
+export default useChessClock
