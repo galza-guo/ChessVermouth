@@ -339,7 +339,7 @@
     "2025.12.07(01)": {
       "id": "2025.12.07(01)",
       "createdAt": "2025-12-07T00:38:37.905Z",
-      "updatedAt": "2025-12-07T01:11:03.742Z",
+      "updatedAt": "2025-12-07T01:21:43.654Z",
       "status": "active",
       "variant": "standard",
       "players": {
@@ -347,68 +347,13 @@
         "opponentName": null
       },
       "startFEN": "startpos",
-      "fen": "rnbqkbnr/p4ppp/8/1pppp3/3PPP1P/3B4/PPP3P1/RNBQK1NR b KQkq - 1 5",
-      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"]1. e4 e5 2. d4 d5 3. f4 b5 4. h4 c5 5. Bd3 *",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "pgn": "[Event \"?\"][Site \"?\"][Date \"????.??.??\"][Round \"?\"][White \"?\"][Black \"?\"][Result \"*\"] *",
       "clocks": {
-        "whiteMs": 17751,
+        "whiteMs": 27251,
         "blackMs": 0
       },
-      "moves": [
-        {
-          "ply": 1,
-          "uci": "e2e4",
-          "san": "e4",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 2,
-          "uci": "e7e5",
-          "san": "e5",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 3,
-          "uci": "d2d4",
-          "san": "d4",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 4,
-          "uci": "d7d5",
-          "san": "d5",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 5,
-          "uci": "f2f4",
-          "san": "f4",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 6,
-          "uci": "b7b5",
-          "san": "b5",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 7,
-          "uci": "h2h4",
-          "san": "h4",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 8,
-          "uci": "c7c5",
-          "san": "c5",
-          "ts": "2025-12-07T01:11:03.742Z"
-        },
-        {
-          "ply": 9,
-          "uci": "f1d3",
-          "san": "Bd3",
-          "ts": "2025-12-07T01:11:03.742Z"
-        }
-      ]
+      "moves": []
     }
   },
   "counters": {

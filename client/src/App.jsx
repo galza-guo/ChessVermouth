@@ -923,6 +923,66 @@ function App() {
     setTimeout(() => setPieceAnimNonce((n) => n + 1), 100)
   }, [clearHotSeatSnapshot, hotSeatGame, updateHotSeatPosition])
 
+  const handleCopyBoard = useCallback(async () => {
+    try {
+      let finalPgn = ''
+      let fenToSave = ''
+      
+      if (isHotSeatMode && hotSeatGame) {
+        finalPgn = hotSeatGame.pgn()
+        fenToSave = hotSeatGame.fen()
+      } else if (!isHotSeatMode && history.length > 0) {
+        // Replay history to generate PGN
+        const tmp = new Chess()
+        history.forEach(m => {
+          try { tmp.move(m.san || m.uci) } catch (_) {}
+        })
+        finalPgn = tmp.pgn()
+        fenToSave = tmp.fen()
+      } else {
+        // Fallback for empty/unknown
+        finalPgn = ''
+      }
+
+      const payload = {
+        type: 'chess-vermouth-snapshot',
+        ver: '1.0',
+        timestamp: Date.now(),
+        pgn: finalPgn,
+        clocks: clockLatestRef.current || { whiteMs: 300000, blackMs: 300000 },
+        fen: fenToSave
+      }
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+      alert('Chessboard state copied to clipboard.')
+    } catch (e) {
+      console.error('Copy failed', e)
+      alert('Failed to copy to clipboard.')
+    }
+  }, [isHotSeatMode, hotSeatGame, history])
+
+  const handlePasteBoard = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      const data = JSON.parse(text)
+      if (data.type === 'chess-vermouth-snapshot' || data.pgn) {
+        const snapshot = {
+          id: `paste-${Date.now()}`,
+          pgn: data.pgn || '',
+          clocks: data.clocks || { whiteMs: 300000, blackMs: 300000 },
+          history: [], // ResumeLogic will rebuild history from PGN
+          fen: data.fen || 'startpos'
+        }
+        writeHotSeatSnapshot(snapshot)
+        setResumeModal({ open: true, game: snapshot })
+      } else {
+        alert('Clipboard content is not a recognized game format.')
+      }
+    } catch (e) {
+      console.error('Paste failed', e)
+      alert('Failed to paste: ' + e.message)
+    }
+  }, [writeHotSeatSnapshot])
+
   const handleResumeDialogResume = useCallback(() => {
     if (isHotSeatMode) {
       handleHotSeatResume()
@@ -1167,6 +1227,8 @@ function App() {
           onBestMoveChange={setBestMoveArrow}
           onMenuClick={() => setIsContextMenuOpen((v) => !v)}
           isMenuOpen={isContextMenuOpen}
+          onCopyBoard={handleCopyBoard}
+          onPasteBoard={handlePasteBoard}
           onHistoryClick={() => {
             setIsContextMenuOpen(false)
             setIsHistoryOpen(true)
@@ -1716,7 +1778,7 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
   )
 }
 
-function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate, onBestMoveChange, onMenuClick, isMenuOpen, onHistoryClick, onResetClick, onLeaveClick }) {
+function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate, onBestMoveChange, onMenuClick, isMenuOpen, onHistoryClick, onResetClick, onLeaveClick, onCopyBoard, onPasteBoard }) {
   // ViewWindow: versatile middle panel (MoveListView | AnalysisView | EmojiView)
   const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
@@ -2147,9 +2209,24 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
                 <button
                   type='button'
                   className='w-full px-4 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-200 rounded-t-lg'
-                  onClick={onHistoryClick}
+                  onClick={() => { onMenuClick && onMenuClick(); onHistoryClick && onHistoryClick() }}
                 >
                   History
+                </button>
+                <hr className='border-zinc-300 mx-2' />
+                <button
+                  type='button'
+                  className='w-full px-4 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-200'
+                  onClick={() => { onMenuClick && onMenuClick(); onCopyBoard && onCopyBoard() }}
+                >
+                  Copy Chessboard
+                </button>
+                <button
+                  type='button'
+                  className='w-full px-4 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-200'
+                  onClick={() => { onMenuClick && onMenuClick(); onPasteBoard && onPasteBoard() }}
+                >
+                  Paste Chessboard
                 </button>
                 <hr className='border-zinc-300 mx-2' />
                 <button
@@ -2177,7 +2254,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             ref={tableEnd}
             role='region'
             aria-label={panelView === 'AnalysisView' ? 'AI Analysis' : (panelView === 'EmojiView' ? 'Emoji' : 'Move List')}
-            className={`relative flex-1 overflow-auto rounded-lg border p-2 select-text ${isWhitePlayer ? 'border-zinc-300/50 bg-white/50' : 'border-white/10 bg-white/5'}`}
+            className={`relative flex-1 min-h-[12rem] overflow-auto rounded-lg border p-2 select-text ${isWhitePlayer ? 'border-zinc-300/50 bg-white/50' : 'border-white/10 bg-white/5'}`}
           >
             {/* MoveListView */}
             {panelView === 'MoveListView' && (
@@ -2185,23 +2262,20 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
                 {history.length === 0 ? (
                   <div className={`text-xs ${isWhitePlayer ? 'text-zinc-500' : 'text-zinc-400'}`}>No moves yet</div>
                 ) : (
-                  <table className='w-full table-fixed'>
-                    <tbody>
-                    {history.map((move, i) => {
-                      if (i % 2 === 0) {
-                        return (
-                          <tr key={i} className={`text-center font-semibold text-sm ${isWhitePlayer ? 'text-zinc-900' : 'text-white/90'}`}>
-                            <td className={`w-10 font-normal ${isWhitePlayer ? 'text-zinc-500' : 'text-gray-400'}`}>{i / 2 + 1}.</td>
-                            <td className='px-2'>{move.san}</td>
-                            <td className='px-2'>{history[i + 1]?.san}</td>
-                          </tr>
-                        )
-                      } else {
-                        return null
-                      }
+                  <div className='grid grid-cols-2 gap-x-4 gap-y-0.5 content-start'>
+                    {Array.from({ length: Math.ceil(history.length / 2) }).map((_, k) => {
+                      const i = k * 2
+                      const moveWhite = history[i]
+                      const moveBlack = history[i + 1]
+                      return (
+                        <div key={k} className={`flex items-center text-sm ${isWhitePlayer ? 'text-zinc-900' : 'text-white/90'}`}>
+                          <span className={`w-8 text-right font-mono text-xs mr-2 opacity-50`}>{k + 1}</span>
+                          <span className='flex-1 font-medium truncate ml-1'>{moveWhite.san}</span>
+                          <span className='flex-1 font-medium truncate ml-1'>{moveBlack?.san || ''}</span>
+                        </div>
+                      )
                     })}
-                    </tbody>
-                  </table>
+                  </div>
                 )}
                 {/* Expandable button (placeholder) removed */}
               </>
@@ -2747,7 +2821,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 }
 
 //render the correct panel based on the game status
-function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji, onClockUpdate, onBestMoveChange, onMenuClick, isMenuOpen, onHistoryClick, onResetClick, onLeaveClick }) {
+function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji, onClockUpdate, onBestMoveChange, onMenuClick, isMenuOpen, onHistoryClick, onResetClick, onLeaveClick, onCopyBoard, onPasteBoard }) {
   // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
   return (
     <ControlPanel
@@ -2779,6 +2853,8 @@ function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gam
       onHistoryClick={onHistoryClick}
       onResetClick={onResetClick}
       onLeaveClick={onLeaveClick}
+      onCopyBoard={onCopyBoard}
+      onPasteBoard={onPasteBoard}
     />
   )
 }

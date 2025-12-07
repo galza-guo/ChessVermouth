@@ -397,7 +397,7 @@ export default function ControlPanel({ history, tableEnd, socket, status, gameId
             ref={tableEnd}
             role='region'
             aria-label={panelView === 'AnalysisView' ? 'AI Analysis' : (panelView === 'EmojiView' ? 'Emoji' : 'Move List')}
-            className='relative h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'
+            className='relative min-h-[12rem] flex-1 overflow-auto rounded-lg border border-white/10 bg-white/5 p-2 select-text'
           >
             {/* MoveListView */}
             {panelView === 'MoveListView' && (
@@ -405,23 +405,20 @@ export default function ControlPanel({ history, tableEnd, socket, status, gameId
                 {history.length === 0 ? (
                   <div className='text-xs text-zinc-400'>No moves yet</div>
                 ) : (
-                  <table className='w-full table-fixed'>
-                    <tbody>
-                    {history.map((move, i) => {
-                      if (i % 2 === 0) {
-                        return (
-                          <tr key={i} className='text-center font-semibold text-sm text-white/90'>
-                            <td className='w-10 font-normal text-gray-400'>{i / 2 + 1}.</td>
-                            <td className='px-2'>{move.san}</td>
-                            <td className='px-2'>{history[i + 1]?.san}</td>
-                          </tr>
-                        )
-                      } else {
-                        return null
-                      }
+                  <div className='grid grid-cols-2 gap-x-4 gap-y-0.5 content-start'>
+                    {Array.from({ length: Math.ceil(history.length / 2) }).map((_, k) => {
+                      const i = k * 2
+                      const moveWhite = history[i]
+                      const moveBlack = history[i + 1]
+                      return (
+                        <div key={k} className='flex items-center text-sm text-white/90'>
+                          <span className='w-8 text-right font-mono text-xs mr-2 opacity-50'>{k + 1}</span>
+                          <span className='flex-1 font-medium truncate ml-1'>{moveWhite.san}</span>
+                          <span className='flex-1 font-medium truncate ml-1'>{moveBlack?.san || ''}</span>
+                        </div>
+                      )
                     })}
-                    </tbody>
-                  </table>
+                  </div>
                 )}
                 {/* Expandable button (placeholder) removed */}
               </>
