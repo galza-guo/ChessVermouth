@@ -1009,11 +1009,10 @@ function App() {
   return (
     <div className='min-h-[100svh] md:min-h-screen w-full text-zinc-100 select-none'>
       {/* Header */}
-      <header className='sticky top-0 z-40 border-b border-white/10 bg-zinc-900/70 backdrop-blur'>
-        <div className='mx-auto max-w-5xl px-4 h-14 flex items-center justify-between'>
+      <header className='sticky top-0 z-40'>
+        <div className='mx-auto h-14 flex items-center justify-between' style={{ maxWidth: 'min(92vw, 500px)' }}>
           <div className='flex items-center gap-2'>
-            <img src="/Vermouth's Gambit (logo only).png" alt="Vermouth's Gambit logo" className='h-6 w-6 rounded' />
-            <span className='text-lg font-semibold tracking-tight'>Vermouth's Gambit</span>
+            <img src="/logo-text.png" alt="ChessVermouth" className='h-12' />
             <span className='badge'>{isHotSeatMode ? 'Hot Seat' : 'Online'}</span>
             {isDevMode && <span className='badge badge-dev'>Dev</span>}
             {status === 'waiting' && <span className='badge-warn'>Waiting</span>}
@@ -1022,54 +1021,6 @@ function App() {
             {saveIndicator}
             {!isHotSeatMode && gameId && status === 'ready' && (
               <span>Session: <span className='font-mono text-rt-gold'>{gameId}</span></span>
-            )}
-            <button
-              type='button'
-              className='ml-3 inline-flex items-center justify-center w-8 h-8 rounded-md border border-white/10 bg-white/5 text-white/80 hover:bg-white/10'
-              onClick={() => setIsContextMenuOpen((v) => !v)}
-              aria-label='Open menu'
-            >
-              <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-                <circle cx='5' cy='12' r='1'/>
-                <circle cx='12' cy='12' r='1'/>
-                <circle cx='19' cy='12' r='1'/>
-              </svg>
-            </button>
-            {isContextMenuOpen && (
-              <div data-context-menu='1' className='absolute right-0 top-10 z-40 w-40 rounded-lg border border-white/15 bg-zinc-900/95 shadow-lg backdrop-blur'>
-                <button
-                  type='button'
-                  className='w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10'
-                  onClick={() => {
-                    setIsContextMenuOpen(false)
-                    setIsHistoryOpen(true)
-                    fetchHistoryGames()
-                  }}
-                >
-                  History
-                </button>
-                <hr className='border-white/10 mx-2' />
-                <button
-                  type='button'
-                  className='w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10'
-                  onClick={() => {
-                    setIsContextMenuOpen(false)
-                    setResetConfirmOpen(true)
-                  }}
-                >
-                  Reset Game
-                </button>
-                <button
-                  type='button'
-                  className='w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-white/10'
-                  onClick={() => {
-                    setIsContextMenuOpen(false)
-                    setLeaveConfirmOpen(true)
-                  }}
-                >
-                  {isHotSeatMode ? 'New Game' : 'Leave Game'}
-                </button>
-              </div>
             )}
           </div>
         </div>
@@ -1194,6 +1145,21 @@ function App() {
           onSendEmoji={sendEmoji}
           onClockUpdate={setClockLatest}
           onBestMoveChange={setBestMoveArrow}
+          onMenuClick={() => setIsContextMenuOpen((v) => !v)}
+          isMenuOpen={isContextMenuOpen}
+          onHistoryClick={() => {
+            setIsContextMenuOpen(false)
+            setIsHistoryOpen(true)
+            fetchHistoryGames()
+          }}
+          onResetClick={() => {
+            setIsContextMenuOpen(false)
+            setResetConfirmOpen(true)
+          }}
+          onLeaveClick={() => {
+            setIsContextMenuOpen(false)
+            setLeaveConfirmOpen(true)
+          }}
         />
       </main>
 
@@ -1254,7 +1220,7 @@ function App() {
                 <h3 className='text-lg font-semibold text-white'>Game History</h3>
                 <p className='text-xs text-zinc-400'>Resume or delete past games</p>
               </div>
-              <button className='text-sm text-zinc-300 hover:text-white' onClick={() => setIsHistoryOpen(false)}>Close</button>
+              <button className='px-3 py-1.5 rounded-md bg-zinc-700 text-white text-sm font-medium hover:bg-zinc-600' onClick={() => setIsHistoryOpen(false)}>Close</button>
             </div>
             <div className='flex-1 overflow-y-auto space-y-2 pr-1'>
               {historyLoading && <div className='text-sm text-zinc-400'>Loading…</div>}
@@ -1279,7 +1245,7 @@ function App() {
                     </button>
                     <button
                       type='button'
-                      className='px-3 py-1.5 rounded-md border border-white/20 text-xs text-white hover:bg-white/10'
+                      className='px-3 py-1.5 rounded-md bg-red-600/80 text-white text-xs font-medium hover:bg-red-600'
                       onClick={() => handleHistoryDelete(g.id)}
                     >
                       Delete
@@ -1298,18 +1264,18 @@ function App() {
 function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, availableMoves, history, isCheck, isGameOver, turn, selectedSquare, color, emojiBursts, animatedPiece, bestMoveArrow}) {
   const numToLetter = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
   
-  // Refined Tactility Colors
+  // Refined Tactility Colors - Slate/Stone inspired
   const COLORS = {
-    darkSquare: '#5D4E3C',     // Warm Walnut
-    lightSquare: '#F0E6D3',    // Warm Cream
+    darkSquare: '#5A6872',     // Cool Slate Gray
+    lightSquare: '#E8E4DC',    // Warm Stone Cream
     gold: '#C9A227',           // Antique Gold
     surface: '#1A1A24',        // Slate Depth (frame)
     text: '#EAEAF0',           // Primary text
   }
   
-  // SVG noise texture for matte effect
+  // SVG noise texture for matte stone effect - medium grain, natural variation
   const textureStyle = {
-    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E")`,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.45' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.12'/%3E%3C/svg%3E")`,
   }
 
   // Parse best move arrow (e.g., "e2e4" or "g1f3")
@@ -1362,7 +1328,7 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
     // Gold arrow to match Refined Tactility
     arrowSvg = (
       <svg
-        className='absolute inset-0 w-full h-full pointer-events-none z-30'
+        className='absolute inset-0 w-full h-full pointer-events-none z-[5]'
         viewBox='0 0 100 100'
         preserveAspectRatio='none'
       >
@@ -1409,7 +1375,7 @@ function chessBoard({board, handleSquareClick, handleDragStart, handleDrop, avai
         backgroundColor: isDarkSquare ? COLORS.darkSquare : COLORS.lightSquare,
       }
       const coordStyle = {
-        color: isDarkSquare ? 'rgba(240, 230, 211, 0.6)' : 'rgba(93, 78, 60, 0.6)',
+        color: isDarkSquare ? 'rgba(232, 228, 220, 0.5)' : 'rgba(90, 104, 114, 0.5)',
       }
 
       boardArr.push(
@@ -1710,7 +1676,7 @@ function TimerDisplay({ label, minutes, seconds, active, onClick, easterEgg }) {
   )
 }
 
-function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate, onBestMoveChange }) {
+function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate, onBestMoveChange, onMenuClick, isMenuOpen, onHistoryClick, onResetClick, onLeaveClick }) {
   // ViewWindow: versatile middle panel (MoveListView | AnalysisView | EmojiView)
   const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
@@ -2070,7 +2036,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <span
               role='tooltip'
               aria-hidden='true'
-              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+              className='pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
             >Emoji</span>
           </div>
 
@@ -2092,7 +2058,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <span
               role='tooltip'
               aria-hidden='true'
-              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+              className='pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
             >Analyse</span>
           </div>
 
@@ -2109,14 +2075,60 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
             <span
               role='tooltip'
               aria-hidden='true'
-              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+              className='pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
             >Undo</span>
           </div>
 
-
-
-          {/* Reserve space for ~3 future buttons */}
-          <div className='h-16 md:h-24' aria-hidden='true'></div>
+          {/* Menu */}
+          <div className='relative group'>
+            <button
+              type='button'
+              aria-label='Menu'
+              className={`neo-btn ${isWhitePlayer ? 'neo-btn-light' : ''}`}
+              onClick={onMenuClick}
+            >
+              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className={isWhitePlayer ? 'brightness-0' : 'brightness-0 invert'}>
+                <circle cx='12' cy='12' r='1'/>
+                <circle cx='12' cy='5' r='1'/>
+                <circle cx='12' cy='19' r='1'/>
+              </svg>
+            </button>
+            <span
+              role='tooltip'
+              aria-hidden='true'
+              className='pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+            >Menu</span>
+            {/* Context Menu Dropdown */}
+            {isMenuOpen && (
+              <div 
+                data-context-menu='1' 
+                className='absolute left-full top-0 ml-2 z-50 w-40 rounded-lg border border-zinc-300 bg-zinc-100 shadow-xl'
+              >
+                <button
+                  type='button'
+                  className='w-full px-4 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-200 rounded-t-lg'
+                  onClick={onHistoryClick}
+                >
+                  History
+                </button>
+                <hr className='border-zinc-300 mx-2' />
+                <button
+                  type='button'
+                  className='w-full px-4 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-200'
+                  onClick={onResetClick}
+                >
+                  Reset Game
+                </button>
+                <button
+                  type='button'
+                  className='w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-zinc-200 rounded-b-lg'
+                  onClick={onLeaveClick}
+                >
+                  {isHotSeatMode ? 'New Game' : 'Leave Game'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Middle: versatile panel (ViewWindow) */}
@@ -2170,7 +2182,7 @@ function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNon
               <div className='space-y-2 text-sm'>
                 <div className='flex items-center gap-2 mb-1'>
                   <span className={`text-xs ${isWhitePlayer ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                    Best for {turn === 'w' ? 'White' : 'Black'}:
+                    {turn === 'w' ? '白方' : '黑方'}参考：
                   </span>
                   {aiBest && (
                     <span className={`font-mono font-medium ${isWhitePlayer ? 'text-zinc-900' : 'text-white'}`}>{aiBest}</span>
@@ -2366,7 +2378,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "Vermouth's Gambit",
+          title: "ChessVermouth",
           text: 'Join my game',
           url: url
         })
@@ -2705,7 +2717,7 @@ function GameJoinPanel({ socket, status, color, gameId, serverIp, serverInfo, cl
 }
 
 //render the correct panel based on the game status
-function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji, onClockUpdate, onBestMoveChange }) {
+function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gameId, clockResetNonce, playerName, opponentName, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, serverIp, serverPort, serverInfo, clientPort, enginePort, isQrOpen, setIsQrOpen, qrDataUrl, setQrDataUrl, qrLoading, setQrLoading, onRequestReset, onRequestLeave, onSendEmoji, onClockUpdate, onBestMoveChange, onMenuClick, isMenuOpen, onHistoryClick, onResetClick, onLeaveClick }) {
   // Always render ControlPanel here; GameJoinPanel is now an overlay above the board
   return (
     <ControlPanel
@@ -2732,6 +2744,11 @@ function Panel({ history, tableEnd, socket, status, color, turn, isGameOver, gam
       onSendEmoji={onSendEmoji}
       onClockUpdate={onClockUpdate}
       onBestMoveChange={onBestMoveChange}
+      onMenuClick={onMenuClick}
+      isMenuOpen={isMenuOpen}
+      onHistoryClick={onHistoryClick}
+      onResetClick={onResetClick}
+      onLeaveClick={onLeaveClick}
     />
   )
 }

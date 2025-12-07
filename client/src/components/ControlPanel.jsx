@@ -42,7 +42,7 @@ function formatScore(score) {
   return '-'
 }
 
-export default function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate }) {
+export default function ControlPanel({ history, tableEnd, socket, status, gameId, clockResetNonce, isHotSeatMode, hotSeatCurrentPlayer, hotSeatGame, updateHotSeatPosition, onRequestReset, onRequestLeave, turn, color, isGameOver, playerName, opponentName, serverIp, serverPort, enginePort, onSendEmoji, onClockUpdate, onMenuClick }) {
   // ViewWindow: versatile middle panel (MoveListView | AnalysisView | EmojiView)
   const [panelView, setPanelView] = useState('MoveListView')
   // Auto-scroll the move list to the latest move
@@ -369,10 +369,26 @@ export default function ControlPanel({ history, tableEnd, socket, status, gameId
             >Undo</span>
           </div>
 
-
-
-          {/* Reserve space for ~3 future buttons */}
-          <div className='h-16 md:h-24' aria-hidden='true'></div>
+          {/* Menu */}
+          <div className='relative group'>
+            <button
+              type='button'
+              aria-label='Menu'
+              className='neo-btn'
+              onClick={onMenuClick}
+            >
+              <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='brightness-0 invert'>
+                <circle cx='12' cy='12' r='1'/>
+                <circle cx='12' cy='5' r='1'/>
+                <circle cx='12' cy='19' r='1'/>
+              </svg>
+            </button>
+            <span
+              role='tooltip'
+              aria-hidden='true'
+              className='pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition text-xs px-2 py-1 rounded-md border border-white/10 bg-zinc-900/90 text-white/90 shadow-lg shadow-black/30'
+            >Menu</span>
+          </div>
         </div>
 
         {/* Middle: versatile panel (ViewWindow) */}

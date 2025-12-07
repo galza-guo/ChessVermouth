@@ -116,7 +116,7 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "Vermouth's Gambit",
+          title: "ChessVermouth",
           text: 'Join my game',
           url: url
         })

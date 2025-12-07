@@ -67,7 +67,7 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-bg-deep); /* Obsidian base */
+  background: transparent; /* Let ::before show through */
   /* viewport height fallbacks for mobile toolbars */
   min-height: 100vh; /* fallback */
   min-height: 100svh; /* small viewport height (iOS Safari) */
@@ -86,10 +86,9 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  /* Refined Tactility: subtle gold + sapphire ambient glows */
-  background: radial-gradient(1200px 600px at 10% -10%, rgba(201, 162, 39, 0.06), transparent 60%),
-    radial-gradient(900px 500px at 100% 10%, rgba(61, 90, 128, 0.05), transparent 60%),
-    linear-gradient(180deg, var(--color-bg-deep) 0%, #111116 100%);
+  /* Refined Tactility: Intertwined pattern background */
+  background: url('/Intertwined-bg.png') center center / cover no-repeat;
+  background-color: var(--color-bg-deep);
 }
 
 a {
@@ -146,6 +145,7 @@ button {
     border-radius: 12px;
   }
   .btn-primary {
+    @apply btn;
     /* Refined Tactility: Gold gradient with tactile depth */
     background: linear-gradient(180deg, #D4AD2E 0%, #B8922A 100%);
     color: #0D0D12;
@@ -260,17 +260,10 @@ button {
 
   /* Active states for toggles - Refined Tactility Gold */
   .neo-btn.emoji-active {
-    background: linear-gradient(180deg, rgba(201, 162, 39, 0.18) 0%, rgba(184, 146, 42, 0.22) 100%);
-    border-color: rgba(201, 162, 39, 0.45);
-    box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.15), 6px 6px 12px rgba(0, 0, 0, 0.55),
-      -6px -6px 12px rgba(201, 162, 39, 0.08);
+    /* No background tint - icon color only */
   }
   .neo-btn.analyze-active {
-    /* Sapphire accent for analysis */
-    background: linear-gradient(180deg, rgba(61, 90, 128, 0.22) 0%, rgba(45, 70, 105, 0.26) 100%);
-    border-color: rgba(61, 90, 128, 0.5);
-    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.15), 6px 6px 12px rgba(0, 0, 0, 0.55),
-      -6px -6px 12px rgba(61, 90, 128, 0.08);
+    /* No background tint - icon color only */
   }
 
   /* Destructive variant for circular buttons */
