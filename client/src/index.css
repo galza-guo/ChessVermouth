@@ -122,6 +122,19 @@ button {
   }
 }
 
+/* Pulsing gold shadow animation for active player bar */
+@keyframes gold-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(201, 162, 39, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(201, 162, 39, 0.8);
+  }
+}
+.animate-gold-pulse {
+  animation: gold-pulse 3s ease-in-out infinite;
+}
+
 .grabbable {
   cursor: grab;
 }

@@ -31,11 +31,11 @@ export default function PlayerBar({
   const textColor = isWhite ? 'text-zinc-900' : 'text-white'
   const subTextColor = isWhite ? 'text-zinc-600' : 'text-zinc-400'
   
-  // Active glow effect - Refined Tactility Gold
+  // Active glow effect - Refined Tactility Gold with pulsing shadow
   const activeRing = active
     ? isWhite
-      ? 'ring-2 ring-rt-gold/60 shadow-[0_0_20px_rgba(201,162,39,0.3)]'
-      : 'ring-2 ring-rt-gold/50 shadow-[0_0_20px_rgba(201,162,39,0.25)]'
+      ? 'ring-2 ring-rt-gold/60 animate-gold-pulse'
+      : 'ring-2 ring-rt-gold/50 animate-gold-pulse'
     : ''
 
   // Captured pieces display
