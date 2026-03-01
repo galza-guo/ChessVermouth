@@ -1,168 +1,176 @@
-# ChessVermouth Development Roadmap
+# ChessVermouth PWA TODO
 
-## High Priority Objectives
+**目标:** 把ChessVermouth改造成可以在任何地方（包括中国）访问的PWA，支持多人对战和推送通知。
 
-| Priority | Status    | Issue                             | Description                                                                            | Category        |
-| -------- | --------- | --------------------------------- | -------------------------------------------------------------------------------------- | --------------- |
-| High     | Completed | 🚀 One-Click Setup                | Enhanced CLI menu with `chessvermouth.js` and `install.sh` for macOS                   | User Experience |
-| High     | Completed | 🚀 One-Click Launch               | Interactive menu system - user selects "1" to play instantly                           | User Experience |
-| Low      | Pending   | 🎯 App Bundle Creation            | Create double-clickable ChessVermouth.app for macOS Finder integration                 | User Experience |
-| High     | Completed | 🚀 Remove Command Line Dependency | No raw CLI commands needed - guided menu interface                                     | User Experience |
-| High     | Completed | ♟️ Pawn Promotion                 | Complete pawn promotion system with dialog UI - backend detection + frontend selection | Game Logic      |
-
-## Medium Priority Objectives
-
-| Priority | Status    | Issue                      | Description                                          | Category        |
-| -------- | --------- | -------------------------- | ---------------------------------------------------- | --------------- |
-| Medium   | Completed | 🤖 AI Analysis Integration | AI strategy advisor with Stockfish + LLM explanation | AI Features     |
-| Medium   | Pending   | 🔔 Toast Notifications     | Add user-friendly notifications and alerts           | User Experience |
-
-## Low Priority Objectives
-
-| Priority | Status  | Issue              | Description                            | Category      |
-| -------- | ------- | ------------------ | -------------------------------------- | ------------- |
-| Low      | Pending | 🎨 UI Improvements | General visual enhancements and polish | Visual Design |
-
-## Technical Issues & Improvements
-
-| Priority | Status    | Issue                         | Description                                                                 | Category     |
-| -------- | --------- | ----------------------------- | --------------------------------------------------------------------------- | ------------ |
-| High     | Completed | 🔧 Create CLI Setup Tool      | Built `chessvermouth.js` with interactive menu and `install.sh` for macOS   | Technical    |
-| High     | Completed | 🔧 Build Launcher Application | Interactive CLI menu with options 1-6, handles process management           | Technical    |
-| Medium   | Pending   | 🔧 AI API Integration         | Design and implement API calls for chess analysis with move history payload | Technical    |
-| High     | Completed | 🔧 Pawn Promotion Logic       | Implemented promotion dialog and backend handling                           | Game Logic   |
-| Low      | Completed | 🔧 Code Refactoring           | App.jsx split from 2862→1706 lines, dead code removed                       | Code Quality |
-| Low      | Pending   | 🔧 Error Handling             | Improve error recovery and user feedback                                    | Technical    |
-
-## App Bundle Creation Plan (Low Priority - Future Enhancement)
-
-### Objective
-
-Create a true double-clickable macOS app bundle (ChessVermouth.app) that eliminates the need for Terminal navigation while maintaining the current CLI functionality.
-
-### Implementation Strategy
-
-**Phase 1: App Bundle Structure**
-
-```
-ChessVermouth.app/
-├── Contents/
-│   ├── Info.plist          # App metadata and configuration
-│   ├── MacOS/
-│   │   └── ChessVermouth   # Executable launcher script
-│   └── Resources/
-│       └── chess-icon.icns # Application icon
-```
-
-**Phase 2: Launcher Script**
-Create executable that:
-
-- Detects if Node.js is available
-- Shows user-friendly error if setup needed
-- Launches `chessvermouth.js` automatically
-- Handles working directory navigation
-- Provides macOS-native error dialogs
-
-**Phase 3: Distribution Package**
-
-```
-ChessVermouth.dmg/
-├── ChessVermouth.app/     # Main application
-├── Applications/          # Shortcut to Applications folder
-├── background.png         # Visual instructions
-└── README.txt            # Simple setup instructions
-```
-
-**Phase 4: Enhanced Install Script**
-Modify `install.sh` to:
-
-- Create the .app bundle automatically
-- Generate DMG distribution package
-- Code-sign the app (optional, for Gatekeeper)
-- Create both CLI and GUI entry points
-
-### User Experience Flow
-
-```
-Download ChessVermouth.dmg → Double-click DMG →
-Drag ChessVermouth.app to Applications →
-Double-click ChessVermouth.app →
-Game menu appears automatically!
-```
-
-### Technical Requirements
-
-- **No Terminal knowledge required**
-- **Works from any location** (Downloads, Desktop, Applications)
-- **Handles missing dependencies gracefully**
-- **Maintains CLI functionality** for power users
-- **Cross-platform compatible** (Windows/Linux variants)
-
-### Files to Create
-
-1. `create-app-bundle.sh` - App bundle generator
-2. `ChessVermouth.applescript` - AppleScript wrapper (backup method)
-3. Enhanced `install.sh` with DMG creation
-4. App icon design and creation
-
-### Benefits
-
-- **Consumer-grade experience** for everyday users
-- **Familiar macOS conventions** (app in Applications folder)
-- **No directory navigation required**
-- **Professional appearance** vs CLI scripts
-- **Gatekeeper compatibility** (with code signing)
-
-This enhancement transforms ChessVermouth from a developer-friendly setup to a consumer-ready application while preserving all existing functionality.
-
-## Missing Core Features
-
-| Priority | Status    | Issue               | Description                                                | Category   |
-| -------- | --------- | ------------------- | ---------------------------------------------------------- | ---------- |
-| High     | Completed | 🎮 Hot Seat Mode    | Local multiplayer implemented - two players on same device | Game Modes |
-| Low      | Pending   | 🤖 Play Against Bot | AI opponent with difficulty levels                         | Game Modes |
-
-## Technical Limitations to Address
-
-| Priority | Status      | Issue                   | Description                                                 | Category     |
-| -------- | ----------- | ----------------------- | ----------------------------------------------------------- | ------------ |
-| Medium   | Pending     | 🌐 Network Limitations  | Currently local-network only, consider internet multiplayer | Architecture |
-| Low      | Pending     | 🔐 Authentication       | No user accounts or player profiles                         | Architecture |
-| Low      | In Progress | 💾 Database Integration | JSON persistence implemented, SQLite migration planned      | Architecture |
-| Low      | Pending     | 📝 TypeScript Migration | Add type safety to codebase                                 | Code Quality |
-
-## Current Implementation Issues
-
-| Priority | Status  | Issue                      | Description                                 | Category     |
-| -------- | ------- | -------------------------- | ------------------------------------------- | ------------ |
-| Medium   | Pending | 🔗 Hardcoded URLs          | Server URL hardcoded in client              | Code Quality |
-| Low      | Pending | 🌍 Mixed Languages         | Some Chinese comments in codebase           | Code Quality |
-| Low      | Pending | 🏗️ Global State Management | Could be improved with proper state library | Architecture |
-
-## Status Legend
-
-- **Pending**: Not started
-- **In Progress**: Currently being worked on
-- **Testing**: Ready for testing/review
-- **Completed**: Done and verified
-- **Blocked**: Waiting on external factors
-
-## Priority Legend
-
-- **High**: Critical for user adoption and core functionality
-- **Medium**: Important features that enhance user experience
-- **Low**: Nice-to-have improvements and polish
-
-## Category Legend
-
-- **User Experience**: Direct impact on user interaction and ease of use
-- **Technical**: Backend/implementation improvements
-- **Game Logic**: Chess-specific functionality
-- **Visual Design**: UI/appearance improvements
-- **Features**: New functionality additions
-- **Architecture**: System-level improvements
-- **Code Quality**: Development and maintenance improvements
+**核心架构:** LeanCloud一站式（数据库 + 实时通信 + 推送） + Stockfish WASM + PWA
 
 ---
 
-**Next Steps**: Implement Hot Seat Mode (high priority) to enable local multiplayer on the same device, then work on Play Against Bot feature (low priority) for single-player gameplay.
+## ✅ Phase 1: LeanCloud 一站式集成
+
+**为什么:** 数据库 + 实时通信 + 推送通知，一个服务搞定，不需要自己搭服务器。
+
+### Tasks
+- [ ] 注册 leancloud.cn，创建应用
+- [ ] 获取凭证: App ID, App Key, Server URL
+- [ ] 安装SDK:
+  ```bash
+  npm install leancloud-storage leancloud-realtime
+  ```
+- [ ] 创建数据模型（Games表，匹配当前schema）
+- [ ] 配置实时通信（LiveQuery订阅游戏更新）
+- [ ] 配置推送通知
+- [ ] 测试: 你下棋 → 老婆实时收到 + 收到推送
+
+**预计时间:** 3-4小时
+
+---
+
+## ✅ Phase 2: Stockfish WASM (浏览器AI)
+
+**为什么:** 去掉引擎服务器，Stockfish直接在浏览器运行。
+
+### Tasks
+- [ ] 下载 stockfish-nnue.wasm (hi-ogawa/Stockfish)
+- [ ] 添加 Web Worker 集成到 `client/src/`
+- [ ] 替换引擎API调用为本地WASM
+- [ ] 删除 `src/server.ts` 和 `engine/` 目录
+- [ ] 浏览器测试AI分析
+- [ ] 移动Safari测试
+
+**预计时间:** 2-3小时
+
+---
+
+## ✅ Phase 3: PWA 配置 (可安装)
+
+**为什么:** iOS/Android "添加到主屏幕"体验。
+
+### Tasks
+- [ ] 创建 `client/public/manifest.json`
+- [ ] 制作app图标 (192x192, 512x512)
+- [ ] 添加manifest链接到 `client/index.html`
+- [ ] 添加iOS meta标签
+- [ ] iPhone测试 "添加到主屏幕"
+
+**预计时间:** 1小时
+
+---
+
+## ✅ Phase 4: Service Worker (离线支持)
+
+**为什么:** 断网也能继续，二次打开秒加载。
+
+### Tasks
+- [ ] 创建 `client/public/service-worker.js`
+- [ ] 缓存策略: 静态资源cache-first, API网络优先
+- [ ] 在 `client/main.jsx` 注册
+- [ ] 测试离线模式
+
+**预计时间:** 1小时
+
+---
+
+## ✅ Phase 5: 部署
+
+**为什么:** 前端部署到CDN，全球访问。
+
+### Frontend (Netlify)
+- [ ] 注册 Netlify
+- [ ] 连接 GitHub repo
+- [ ] 配置构建: `npm run build` → `dist/`
+- [ ] 配置环境变量 (LeanCloud凭证)
+- [ ] 部署测试
+- [ ] 从部署URL测试PWA安装
+
+**预计时间:** 30分钟
+
+---
+
+## ✅ Phase 6: 终极测试
+
+**为什么:** 给老婆用之前确保一切正常。
+
+### 测试清单
+- [ ] 跨网络: 你(WiFi) vs 老婆(移动)
+- [ ] App切换: 切到微信再回来，游戏还在
+- [ ] 推送通知: 你下棋，老婆收到推送
+- [ ] 离线: 关WiFi重开，能继续
+- [ ] PWA安装: iPhone "添加到主屏幕"
+- [ ] Stockfish: 浏览器AI分析正常
+- [ ] 中国访问: 不同网络都能玩
+
+**预计时间:** 1小时
+
+---
+
+## 📁 新建文件
+
+```
+ChessVermouth/
+├── client/
+│   ├── public/
+│   │   ├── manifest.json          ← PWA manifest
+│   │   ├── service-worker.js      ← 离线缓存
+│   │   ├── icon-192.png          ← App图标
+│   │   └── icon-512.png          ← App图标
+│   └── src/
+│       ├── leancloud/            ← LeanCloud配置
+│       │   ├── init.js
+│       │   └── realtime.js        ← 实时通信
+│       └── workers/
+│           └── stockfish.worker.js ← WASM Worker
+├── netlify.toml                  ← 部署配置
+└── .env.production              ← 生产环境变量
+```
+
+---
+
+## 🔧 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `client/index.html` | 添加manifest链接、iOS meta标签 |
+| `client/main.jsx` | 注册service worker |
+| `client/src/App.jsx` | 添加Stockfish WASM、LeanCloud实时通信、推送 |
+| `server/db.js` | 删除（改用LeanCloud） |
+| `server/index.js` | 简化（移除本地DB逻辑） |
+| `src/server.ts` | 删除（引擎服务器） |
+| `engine/` | 删除整个目录 |
+
+---
+
+## 🎯 成功标准
+
+完成后:
+- ✅ 老婆点链接就能安装（无需App Store）
+- ✅ 不同网络都能玩
+- ✅ 切App游戏不丢
+- ✅ AI分析秒开
+- ✅ 推送通知正常
+- ✅ 全部免费（LeanCloud免费额度 + Netlify免费）
+
+---
+
+## ⏱️ 时间估算
+
+| 阶段 | 时间 |
+|------|------|
+| Phase 1: LeanCloud集成 | 3-4小时 |
+| Phase 2: Stockfish WASM | 2-3小时 |
+| Phase 3: PWA配置 | 1小时 |
+| Phase 4: Service Worker | 1小时 |
+| Phase 5: 部署 | 30分钟 |
+| Phase 6: 测试 | 1小时 |
+| **总计** | **~2天** |
+
+---
+
+## 🚀 开始
+
+**从 Phase 1 开始:** 注册LeanCloud → 获取凭证 → 安装SDK
+
+---
+
+**最后更新:** 2025-01-29
+**状态:** 准备开始

@@ -25,6 +25,28 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
   const [girlLoaded, setGirlLoaded] = useState(false)
   const [hovered, setHovered] = useState(null)
   const [pressed, setPressed] = useState(null)
+  const pendingJoinRef = useRef(null) // Queued join name while waiting for socket
+
+  // Execute pending join when socket becomes available
+  useEffect(() => {
+    console.log('[GameJoinPanel] Socket useEffect triggered, socket:', socket ? 'connected' : 'null', 'pending:', pendingJoinRef.current)
+    if (socket && pendingJoinRef.current) {
+      const name = pendingJoinRef.current
+      pendingJoinRef.current = null
+      console.log('[GameJoinPanel] Socket ready, executing pending join for:', name)
+      // Execute the join
+      if (setPlayerName) setPlayerName(name)
+      setClaimed((prev) => ({ ...prev, [name]: true }))
+      const onceGameId = (gid) => {
+        console.log('[GameJoinPanel] Got gameId:', gid, 'emitting claimName:', name)
+        try { socket.emit('claimName', name) } catch (_) {}
+        socket.off('gameId', onceGameId)
+      }
+      socket.on('gameId', onceGameId)
+      socket.emit('join')
+      console.log('[GameJoinPanel] Emitted join event (from pending)')
+    }
+  }, [socket, setPlayerName])
 
   // Listen for name claim updates
   useEffect(() => {
@@ -43,17 +65,28 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
   }, [socket])
 
   const quickJoin = (name) => {
-    if (!socket) return
+    console.log('[GameJoinPanel] quickJoin called with:', name, 'socket:', socket ? 'connected' : 'null')
+    if (!socket) {
+      // Queue the join for when socket becomes available
+      console.log('[GameJoinPanel] Socket not ready, queueing join for:', name)
+      pendingJoinRef.current = name
+      setClaimed((prev) => ({ ...prev, [name]: true })) // Optimistic UI update
+      return
+    }
     try {
       if (setPlayerName) setPlayerName(name)
       setClaimed((prev) => ({ ...prev, [name]: true }))
       const onceGameId = (gid) => {
+        console.log('[GameJoinPanel] Got gameId:', gid, 'emitting claimName:', name)
         try { socket.emit('claimName', name) } catch (_) {}
         socket.off('gameId', onceGameId)
       }
       socket.on('gameId', onceGameId)
       socket.emit('join')
-    } catch (_) {}
+      console.log('[GameJoinPanel] Emitted join event')
+    } catch (e) {
+      console.error('[GameJoinPanel] quickJoin error:', e)
+    }
   }
 
   // Close QR on outside click or Escape
@@ -239,14 +272,18 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
     setPressed(null)
   }
   const onPointerDown = (e) => {
+    console.log('[GameJoinPanel] onPointerDown, isHome:', isHome)
     if (!isHome) return
     const side = hitTest(e.clientX, e.clientY)
+    console.log('[GameJoinPanel] hitTest result:', side, 'claimed:', claimed)
     const isDisabled = side === 'Gallant' ? !!claimed.Gallant : side === 'Vermouth' ? !!claimed.Vermouth : false
     if (side && !isDisabled) setPressed(side)
   }
   const onPointerUp = (e) => {
+    console.log('[GameJoinPanel] onPointerUp, isHome:', isHome, 'pressed:', pressed)
     if (!isHome) return
     const side = hitTest(e.clientX, e.clientY)
+    console.log('[GameJoinPanel] hitTest result:', side, 'pressed:', pressed, 'isDisabled:', side === 'Gallant' ? !!claimed.Gallant : !!claimed.Vermouth)
     const isDisabled = side === 'Gallant' ? !!claimed.Gallant : side === 'Vermouth' ? !!claimed.Vermouth : false
     if (side && pressed === side && !isDisabled) {
       quickJoin(side)
@@ -279,12 +316,13 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
             <span className='font-mono text-rt-gold'>unknown</span>
           )}
           {url && (
-            <span className='relative inline-flex items-center' ref={qrAnchorRef}>
+            <span className='relative inline-flex items-center gap-1' ref={qrAnchorRef}>
+              {/* QR Code button */}
               <button
                 type='button'
                 onClick={handleQrToggle}
                 aria-label={isQrOpen ? 'Hide QR code' : 'Show QR code'}
-                className='inline-flex items-center justify-center ml-1 h-[1.1em] w-[1.1em] p-0 bg-transparent border-0 text-white/90 hover:opacity-90 active:opacity-80'
+                className='inline-flex items-center justify-center h-[1.1em] w-[1.1em] p-0 bg-transparent border-0 text-white/90 hover:opacity-90 active:opacity-80'
                 title={isQrOpen ? 'Hide QR code' : 'Show QR code'}
               >
                 <svg viewBox='0 0 24 24' width='1em' height='1em' fill='currentColor' aria-hidden='true'>
@@ -292,6 +330,18 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
                   <rect x='14' y='3' width='7' height='7' rx='1'></rect>
                   <rect x='3' y='14' width='7' height='7' rx='1'></rect>
                   <path d='M14 14h3v3h-3zM17 17h4v4h-4zM21 14h-2v-2h2zM14 21h-2v-2h2z'></path>
+                </svg>
+              </button>
+              {/* Share button */}
+              <button
+                type='button'
+                onClick={handleShareClick}
+                aria-label='Share game link'
+                className='inline-flex items-center justify-center h-[1.1em] w-[1.1em] p-0 bg-transparent border-0 text-white/90 hover:opacity-90 active:opacity-80'
+                title='Share game link'
+              >
+                <svg viewBox='0 0 24 24' width='1em' height='1em' fill='currentColor' aria-hidden='true'>
+                  <path d='M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z'/>
                 </svg>
               </button>
               {isQrOpen && createPortal(
@@ -366,6 +416,16 @@ export default function GameJoinPanel({ socket, status, color, gameId, serverIp,
               onLoad={() => setGirlLoaded(true)}
               draggable='false'
             />
+
+            {/* Connecting overlay - shown when user clicked but socket not ready */}
+            {!socket && (claimed.Gallant || claimed.Vermouth) && (
+              <div className='absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-lg'>
+                <div className='flex flex-col items-center gap-2 text-white'>
+                  <div className='w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin'></div>
+                  <span className='text-sm font-medium'>Connecting...</span>
+                </div>
+              </div>
+            )}
 
             {/* Hidden accessible buttons */}
             <button

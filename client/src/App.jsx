@@ -657,14 +657,16 @@ function App() {
       const candidates = Array.from({ length: 10 }, (_, i) => base + i)
 
       let connectedSocket = null
+      console.log('[App] Attempting socket connection to', serverIp, 'on ports', candidates)
       for (const p of candidates) {
         try {
+          console.log(`[App] Trying port ${p}...`)
           const s = io.connect(`http://${serverIp}:${p}`, { timeout: 1200, reconnection: false })
           const ok = await new Promise((resolve) => {
-            const timer = setTimeout(() => resolve(false), 1200)
-            s.on('connect', () => { clearTimeout(timer); resolve(true) })
-            s.on('connect_error', () => { clearTimeout(timer); resolve(false) })
-            s.on('error', () => { clearTimeout(timer); resolve(false) })
+            const timer = setTimeout(() => { console.log(`[App] Port ${p} timeout`); resolve(false) }, 1200)
+            s.on('connect', () => { clearTimeout(timer); console.log(`[App] Connected on port ${p}!`); resolve(true) })
+            s.on('connect_error', (err) => { clearTimeout(timer); console.log(`[App] Port ${p} error:`, err.message); resolve(false) })
+            s.on('error', (err) => { clearTimeout(timer); console.log(`[App] Port ${p} error:`, err); resolve(false) })
           })
           if (ok) {
             connectedSocket = s
@@ -673,22 +675,31 @@ function App() {
           } else {
             s.close()
           }
-        } catch (_) {
+        } catch (e) {
+          console.log(`[App] Port ${p} exception:`, e)
           // try next
         }
       }
 
       if (!connectedSocket) {
+        console.error('[App] Failed to connect to server on any port')
         connectingRef.current = false
         return
       }
       const newSocket = connectedSocket
-      if (cancelled) {
+      console.log('[App] About to set socket, cancelled:', cancelled)
+      // In React Strict Mode, cancelled might be true due to double-mounting
+      // But if we have a valid connection, we should still set the socket
+      if (cancelled && !newSocket.connected) {
+        console.log('[App] Cancelled and socket not connected, aborting')
         newSocket.disconnect()
         connectingRef.current = false
         return
       }
+      // If socket is still connected, use it even if cancelled flag is set
+      console.log('[App] Setting socket, connected:', newSocket.connected)
       setSocket(newSocket)
+      console.log('[App] Socket state updated, socket is now:', newSocket ? 'connected' : 'null')
 
       const handlePosition = (data) => {
         setBoard(data.position)
